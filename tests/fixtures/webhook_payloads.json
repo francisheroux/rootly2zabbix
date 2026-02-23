@@ -1,0 +1,104 @@
+{
+  "incident_updated_acknowledged": {
+    "event_type": "incident.updated",
+    "actor": {"name": "John Doe", "email": "john@example.com"},
+    "data": {
+      "id": "abc123",
+      "title": "Database is down [ZABBIX:12345]",
+      "severity": "high",
+      "acknowledged_at": "2024-01-01T12:00:00Z",
+      "summary": "We are investigating"
+    },
+    "previous_values": {
+      "acknowledged_at": null
+    }
+  },
+  "incident_updated_unacknowledged": {
+    "event_type": "incident.updated",
+    "actor": {"name": "Jane Smith"},
+    "data": {
+      "id": "abc123",
+      "title": "Database is down [ZABBIX:12345]",
+      "severity": "high",
+      "acknowledged_at": null
+    },
+    "previous_values": {
+      "acknowledged_at": "2024-01-01T12:00:00Z"
+    }
+  },
+  "incident_resolved": {
+    "event_type": "incident.resolved",
+    "data": {
+      "id": "abc123",
+      "title": "Database is down [ZABBIX:12345]",
+      "severity": "high"
+    },
+    "previous_values": {}
+  },
+  "incident_updated_severity": {
+    "event_type": "incident.updated",
+    "data": {
+      "id": "abc123",
+      "title": "Database is down [ZABBIX:12345]",
+      "severity": "critical"
+    },
+    "previous_values": {
+      "severity": "high"
+    }
+  },
+  "incident_updated_note": {
+    "event_type": "incident.updated",
+    "data": {
+      "id": "abc123",
+      "title": "Database is down [ZABBIX:12345]",
+      "severity": "high",
+      "summary": "We found the root cause"
+    },
+    "previous_values": {
+      "summary": "We are investigating"
+    }
+  },
+  "incident_mitigated": {
+    "event_type": "incident.mitigated",
+    "data": {
+      "id": "abc123",
+      "title": "Database is down [ZABBIX:12345]",
+      "severity": "high"
+    },
+    "previous_values": {}
+  },
+  "incident_with_custom_field": {
+    "event_type": "incident.updated",
+    "data": {
+      "id": "abc123",
+      "title": "Database is down",
+      "severity": "high",
+      "custom_fields": {
+        "zabbix_event_id": "99999"
+      }
+    },
+    "previous_values": {}
+  },
+  "incident_with_label": {
+    "event_type": "incident.updated",
+    "data": {
+      "id": "abc123",
+      "title": "Database is down",
+      "severity": "high",
+      "labels": [
+        {"name": "team:infra"},
+        {"name": "zabbix_eventid:77777"}
+      ]
+    },
+    "previous_values": {}
+  },
+  "incident_no_eventid": {
+    "event_type": "incident.resolved",
+    "data": {
+      "id": "abc123",
+      "title": "Database is down",
+      "severity": "high"
+    },
+    "previous_values": {}
+  }
+}
