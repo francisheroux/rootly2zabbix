@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebSearch",
+      "WebFetch(domain:rootly.com)",
+      "WebFetch(domain:docs.rootly.com)",
+      "WebFetch(domain:wazuh.com)",
+      "WebFetch(domain:n8n.io)",
+      "Bash(tail:*)"
+    ]
+  }
+}
