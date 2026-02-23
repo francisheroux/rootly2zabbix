@@ -146,6 +146,48 @@ Set `ZABBIX_EVENTID_PATH=some.dot.path` to extract from an arbitrary location in
 
 ## Testing
 
+---
+
+## Troubleshooting
+
+### Resolve doesn't close the Zabbix problem
+
+The service returns HTTP 200 immediately and processes the Zabbix call asynchronously, so Zabbix errors are **never visible to Rootly** — you must check the service logs.
+
+**Most common cause:** the trigger does not have "Allow manual close" enabled.
+
+Fix in Zabbix UI: **Configuration → Triggers → [edit trigger] → check "Allow manual close" → Update**
+
+### How to inspect async errors
+
+```bash
+# systemd
+journalctl -u rootly2zabbix -f
+
+# gunicorn stdout — look for processing_error lines
+grep '"event":"processing_error"' /var/log/rootly2zabbix.log
+```
+
+A failed close looks like:
+
+```json
+{"event": "processing_error", "error": "Cannot close problem: trigger does not allow manual closing", ...}
+```
+
+A successful close looks like:
+
+```json
+{"event": "zabbix_close", ...}
+```
+
+### HTTP 200 doesn't mean Zabbix succeeded
+
+The service always returns 200 to Rootly immediately (before calling Zabbix) to prevent Rootly from disabling the webhook on transient failures. All Zabbix outcomes — success or error — are only visible in the service logs.
+
+---
+
+## Testing
+
 ```bash
 # Run unit tests
 pytest tests/
