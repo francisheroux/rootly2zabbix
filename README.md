@@ -98,6 +98,66 @@ curl http://localhost:5000/health
 
 ---
 
+## EC2 Deployment
+
+### 1. Clone / update the code
+
+```bash
+cd /home/ubuntu
+git clone https://github.com/your-org/rootly2zabbix.git
+# or, on subsequent deploys:
+cd /home/ubuntu/rootly2zabbix && git pull
+```
+
+### 2. Create a virtualenv and install dependencies
+
+```bash
+cd /home/ubuntu/rootly2zabbix
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt gunicorn
+```
+
+### 3. Configure the environment
+
+```bash
+cp .env.example .env
+# Edit .env with your ROOTLY_WEBHOOK_SECRET, ZABBIX_URL, and ZABBIX_TOKEN
+nano .env
+```
+
+### 4. Install and start the systemd service
+
+```bash
+sudo cp rootly2zabbix.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable rootly2zabbix
+sudo systemctl start rootly2zabbix
+```
+
+### 5. Open the AWS Security Group inbound rule
+
+In the AWS console, add an inbound rule to the EC2 instance's security group:
+
+| Type | Protocol | Port | Source |
+|------|----------|------|--------|
+| Custom TCP | TCP | 5000 | Rootly IP range (or `0.0.0.0/0` to allow all) |
+
+### 6. Verify
+
+```bash
+# Service status
+sudo systemctl status rootly2zabbix
+
+# Health endpoint
+curl http://localhost:5000/health
+# → {"status": "ok"}
+
+# Live logs
+journalctl -u rootly2zabbix -f
+```
+
+---
+
 ## Zabbix Setup
 
 ### Create API token
@@ -141,10 +201,6 @@ Include `[ZABBIX:<EVENT.ID>]` in the incident title (e.g. `DB down [ZABBIX:42]`)
 **Option D — Custom path**
 
 Set `ZABBIX_EVENTID_PATH=some.dot.path` to extract from an arbitrary location in the payload.
-
----
-
-## Testing
 
 ---
 

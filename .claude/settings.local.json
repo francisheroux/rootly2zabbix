@@ -9,7 +9,11 @@
       "WebFetch(domain:docs.rootly.com)",
       "WebFetch(domain:wazuh.com)",
       "WebFetch(domain:n8n.io)",
-      "Bash(tail:*)"
+      "Bash(tail:*)",
+      "WebFetch(domain:blog.zabbix.com)",
+      "WebFetch(domain:www.zabbix.com)",
+      "WebFetch(domain:noise.getoto.net)",
+      "WebFetch(domain:api.github.com)"
     ]
   }
 }

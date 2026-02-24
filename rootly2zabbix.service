@@ -1,0 +1,17 @@
+[Unit]
+Description=rootly2zabbix — Rootly to Zabbix webhook bridge
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/rootly2zabbix
+ExecStart=/home/ubuntu/rootly2zabbix/venv/bin/gunicorn -w 2 -b 0.0.0.0:5000 main:app
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rootly2zabbix
+
+[Install]
+WantedBy=multi-user.target
