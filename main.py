@@ -12,6 +12,7 @@ from zabbix import (
     ACTION_MESSAGE,
     ACTION_SEVERITY,
     ACTION_UNACKNOWLEDGE,
+    ZabbixAPIError,
     ZabbixClient,
 )
 
@@ -145,6 +146,27 @@ def _handle_resolved(event) -> None:
     if event.incident_id:
         msg += f" (incident #{event.incident_id})"
     logger.info(json.dumps({"event": "zabbix_close", "zabbix_event_id": event.zabbix_event_id}))
+
+    # Step 1: Get trigger ID from event
+    # Step 2: Enable manual close on the trigger (requires Admin role)
+    # Failure here is non-fatal — we log a warning and attempt the close anyway.
+    try:
+        event_details = zabbix.get_event(event.zabbix_event_id)
+        trigger_id = event_details.get("objectid")
+        if trigger_id:
+            zabbix.enable_trigger_manual_close(trigger_id)
+            logger.info(json.dumps({
+                "event": "trigger_manual_close_enabled",
+                "trigger_id": trigger_id,
+            }))
+    except ZabbixAPIError as e:
+        logger.warning(json.dumps({
+            "event": "trigger_manual_close_skipped",
+            "hint": "API user may lack Admin role required for trigger.update",
+            "error": str(e),
+        }))
+
+    # Step 3: Close the event
     zabbix.acknowledge(event.zabbix_event_id, message=msg, action=ACTION_CLOSE | ACTION_MESSAGE)
 
 
