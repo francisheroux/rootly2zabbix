@@ -29,7 +29,7 @@ def verify_signature(raw_body: bytes, signature_header: str, secret: str) -> boo
     Verification steps:
     1. Extract t (timestamp) and v1 (signature) from header
     2. Reject if timestamp is >5 minutes old (replay attack prevention)
-    3. Compute HMAC-SHA256(secret, "{t}.{raw_body}")
+    3. Compute HMAC-SHA256(secret, "{t}{raw_body}")
     4. Compare using constant-time comparison
     """
     if not signature_header:
@@ -60,7 +60,7 @@ def verify_signature(raw_body: bytes, signature_header: str, secret: str) -> boo
         logger.warning("Signature timestamp is %.0fs old (>300s)", age)
         return False
 
-    signed_content = f"{timestamp}.{raw_body.decode('utf-8', errors='replace')}".encode("utf-8")
+    signed_content = (timestamp + raw_body.decode('utf-8', errors='replace')).encode("utf-8")
     expected = hmac.new(secret.encode("utf-8"), signed_content, hashlib.sha256).hexdigest()
 
     return hmac.compare_digest(expected, v1)

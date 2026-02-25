@@ -16,7 +16,7 @@ SECRET = "test_secret_key"
 
 def make_signature(body: bytes, secret: str, timestamp: int | None = None) -> str:
     ts = timestamp if timestamp is not None else int(time.time())
-    signed = f"{ts}.{body.decode('utf-8')}".encode("utf-8")
+    signed = (str(ts) + body.decode('utf-8')).encode("utf-8")
     digest = hmac.new(secret.encode("utf-8"), signed, hashlib.sha256).hexdigest()
     return f"t={ts},v1={digest}"
 
@@ -61,7 +61,7 @@ class TestVerifySignature:
         """Rootly may include spaces after commas: t=..., v1=..."""
         body = b'{"test": "payload"}'
         ts = int(time.time())
-        signed = f"{ts}.{body.decode('utf-8')}".encode("utf-8")
+        signed = (str(ts) + body.decode('utf-8')).encode("utf-8")
         digest = hmac.new(SECRET.encode("utf-8"), signed, hashlib.sha256).hexdigest()
         sig = f"t={ts}, v1={digest}"  # note the space
         assert verify_signature(body, sig, SECRET) is True

@@ -23,90 +23,16 @@ Zabbix JSON-RPC event.acknowledge
 
 HTTP 200 is returned to Rootly **before** calling Zabbix, so transient Zabbix failures never cause Rootly to disable the webhook.
 
----
-
-## Event Mapping
-
-| Rootly event | Condition | Zabbix action |
-|---|---|---|
-| `incident.updated` | `acknowledged_at` null → timestamp | Acknowledge + add comment |
-| `incident.updated` | `acknowledged_at` timestamp → null | Unacknowledge + add comment |
-| `incident.resolved` | event type | Close problem (if `ROOTLY_RESOLVE_CLOSES_ZABBIX=true`) |
-| `incident.updated` | `severity` changed | Change severity (if `ROOTLY_SEVERITY_UPDATES_ZABBIX=true`) |
-| `incident.updated` | `summary` changed | Add comment with new summary |
-| `incident.mitigated` | event type | Add comment "Mitigated in Rootly" |
-
-### Severity Mapping
-
-| Rootly | Zabbix level | Zabbix label |
-|---|---|---|
-| `critical` | 5 | Disaster |
-| `high` | 4 | High |
-| `medium` | 3 | Average |
-| `low` | 2 | Warning |
-| `informational` | 1 | Information |
-| (unknown) | 0 | Not classified |
-
-Override via `ROOTLY_SEVERITY_MAP` (JSON string).
 
 ---
 
 ## Setup
 
-### 1. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 2. Configure environment
-
-```bash
-cp .env.example .env
-# Edit .env with your values
-```
-
-Required variables:
-
-| Variable | Description |
-|---|---|
-| `ROOTLY_WEBHOOK_SECRET` | Rootly webhook signing secret |
-| `ZABBIX_URL` | Zabbix API URL (comma-separated for failover) |
-| `ZABBIX_TOKEN` | Zabbix API authentication token |
-
-See `.env.example` for all optional variables.
-
-### 3. Run
-
-```bash
-python main.py
-```
-
-Or with gunicorn for production:
-
-```bash
-pip install gunicorn
-gunicorn -w 4 -b 0.0.0.0:5000 'main:app'
-```
-
-### 4. Health check
-
-```bash
-curl http://localhost:5000/health
-# {"status": "ok"}
-```
-
----
-
-## EC2 Deployment
-
 ### 1. Clone / update the code
 
 ```bash
-cd /home/ubuntu
-git clone https://github.com/your-org/rootly2zabbix.git
-# or, on subsequent deploys:
-cd /home/ubuntu/rootly2zabbix && git pull
+cd /home/ubuntu/
+git clone https://github.com/francisheroux/rootly2zabbix.git
 ```
 
 ### 2. Create a virtualenv and install dependencies
@@ -134,13 +60,11 @@ sudo systemctl enable rootly2zabbix
 sudo systemctl start rootly2zabbix
 ```
 
-### 5. Open the AWS Security Group inbound rule
+### 5. Whitelist Rootly IP Addresses
 
-In the AWS console, add an inbound rule to the EC2 instance's security group:
+Make sure you have whitelisted the Rootly IP's (TCP Port 5000) in your inbound rules for where your Zabbix Server is hosted
 
-| Type | Protocol | Port | Source |
-|------|----------|------|--------|
-| Custom TCP | TCP | 5000 | Rootly IP range (or `0.0.0.0/0` to allow all) |
+https://docs.rootly.com/integrations/ip-whitelist
 
 ### 6. Verify
 
@@ -156,24 +80,23 @@ curl http://localhost:5000/health
 journalctl -u rootly2zabbix -f
 ```
 
----
-
 ## Zabbix Setup
 
 ### Create API token
 
-1. Go to **Administration → API tokens**
+1. Go to **Users → API tokens**
 2. Click **Create API token**
-3. Assign the token to a user with at minimum:
+3. Assign the token to a user (normally the same user as your Rootly Media Type) with at minimum:
    - **Read** access to the host groups you want to sync
    - **Acknowledge** permission on the relevant triggers
-4. Copy the token into `ZABBIX_TOKEN`
+4. Copy the generated token (this is your `ZABBIX_TOKEN` for your `.env` file)
 
 ### Enable "Allow Manual Close" to allow Resolving of Alerts
 
-1. Go to **Data Collection → Template**
-2. Select Your Template's Triggers → **Select your Trigger "Allow manual close" → Update**
-   - (You can also multi select triggers for a Template and Mass Update them)
+1. Go to **Data Collection → Templates**
+2. Select your template → **Triggers** → open the trigger
+3. Check **Allow manual close** → **Update**
+   - You can also multi-select triggers and use **Mass Update**
 
 ---
 
@@ -181,32 +104,53 @@ journalctl -u rootly2zabbix -f
 
 ### Configure the webhook
 
-1. Go to **Rootly → Settings → Webhooks**
-2. Click **Add Webhook**
-3. Set **URL** to `https://your-server:5000/webhook`
-4. Enable these events: `incident.updated`, `incident.resolved`, `incident.mitigated`
-5. Copy the **Signing Secret** into `ROOTLY_WEBHOOK_SECRET`
+1. Go to **Rootly → Configuration → Webhooks**
+2. Click **New Endpoint**
+3. Give it a **Title** (e.g. "rootly2zabbix-webhook")
+4. Set **URL** to `https://your-server:5000/webhook`
+5. Copy the **Signing Secret** — this is your `ROOTLY_WEBHOOK_SECRET` for `.env`
+6. Add these **Event Triggers**: `incident.updated` and `incident.resolved`
 
 ### Pass the Zabbix Event ID
 
-The Zabbix `{EVENT.ID}` must be embedded in the Rootly incident so this service can look it up. Options (tried in order):
+This service needs to know which Zabbix event to update when a Rootly webhook arrives. The Zabbix `{EVENT.ID}` must travel from Zabbix into the Rootly incident when the alert is first created, so it can be read back here.
+
+**How the ID flows:**
+
+```
+1. Zabbix fires an alert
+2. Zabbix media type creates a Rootly incident   ← {EVENT.ID} is embedded here
+3. You acknowledge / resolve in Rootly
+4. Rootly POSTs a webhook to this service
+5. This service reads the event ID and calls Zabbix
+```
+
+The service checks these locations in order — use whichever is easiest to set up:
+
+| Priority | Where | Format |
+|---|---|---|
+| 1 | Custom dot-path (`ZABBIX_EVENTID_PATH` in `.env`) | any field path |
+| 2 | Rootly custom field `zabbix_event_id` | `12345` |
+| 3 | Incident label | `zabbix_eventid:12345` |
+| 4 | Incident title | `[ZABBIX:12345] Disk full` |
 
 **Option A — Custom field (recommended)**
 
-1. Create a custom field named `zabbix_event_id` in Rootly
-2. In your Zabbix webhook media type, set this field when creating the incident
+1. In Rootly → **Settings → Custom Fields**, create a field with key `zabbix_event_id`
+2. In your Zabbix media type script (the one that creates Rootly incidents), pass the event ID:
+   ```
+   "custom_fields": { "zabbix_event_id": "{EVENT.ID}" }
+   ```
 
-**Option B — Label**
+**Option B — Title embedding (simplest)**
 
-Include a label `zabbix_eventid:<EVENT.ID>` when creating the incident from Zabbix.
+No Rootly custom field needed. In your Zabbix media type, prefix the incident title:
 
-**Option C — Title**
+```
+[ZABBIX:{EVENT.ID}] {TRIGGER.NAME}
+```
 
-Include `[ZABBIX:<EVENT.ID>]` in the incident title (e.g. `DB down [ZABBIX:42]`).
 
-**Option D — Custom path**
-
-Set `ZABBIX_EVENTID_PATH=some.dot.path` to extract from an arbitrary location in the payload.
 
 ---
 
@@ -253,13 +197,13 @@ grep '"event":"processing_error"' /var/log/rootly2zabbix.log
 
 A failed close looks like:
 
-```json
+```
 {"event": "processing_error", "error": "Cannot close problem: trigger does not allow manual closing", ...}
 ```
 
 A successful close looks like:
 
-```json
+```
 {"event": "zabbix_close", ...}
 ```
 
@@ -271,17 +215,46 @@ The service always returns 200 to Rootly immediately (before calling Zabbix) to 
 
 ## Testing
 
+## Run these where you've installed rootly2zabbix
 ```bash
-# Run unit tests
-pytest tests/
-
 # Send a signed test webhook (ROOTLY_WEBHOOK_SECRET must be set in .env or environment)
 python3 send_test_webhook.py --event-type incident.updated.ack    --zabbix-event-id 12345
 python3 send_test_webhook.py --event-type incident.updated.unack  --zabbix-event-id 12345
 python3 send_test_webhook.py --event-type incident.resolved       --zabbix-event-id 12345
 python3 send_test_webhook.py --event-type incident.updated.severity --zabbix-event-id 12345
-python3 send_test_webhook.py --event-type incident.mitigated      --zabbix-event-id 12345
 
 # Watch logs to confirm Zabbix outcome
 journalctl -u rootly2zabbix -f
 ```
+
+## Check your Rootly webhook runs to see their status
+
+1. Acknowledge or Resolve an alert in Rootly
+2. Go to **Configuration → Webhooks → select the "View" icon on your webhook → Details**
+
+---
+
+## Event Mapping Info
+
+| Rootly event | Condition | Zabbix action |
+|---|---|---|
+| `incident.updated` | `acknowledged_at` null → timestamp | Acknowledge + add comment |
+| `incident.updated` | `acknowledged_at` timestamp → null | Unacknowledge + add comment |
+| `incident.resolved` | event type | Close problem (if `ROOTLY_RESOLVE_CLOSES_ZABBIX=true`) |
+| `incident.updated` | `severity` changed | Change severity (if `ROOTLY_SEVERITY_UPDATES_ZABBIX=true`) |
+| `incident.updated` | `summary` changed | Add comment with new summary |
+
+### Severity Mapping
+
+| Rootly | Zabbix level | Zabbix label |
+|---|---|---|
+| `critical` | 5 | Disaster |
+| `high` | 4 | High |
+| `medium` | 3 | Average |
+| `low` | 2 | Warning |
+| `informational` | 1 | Information |
+| (unknown) | 0 | Not classified |
+
+Override via `ROOTLY_SEVERITY_MAP` (JSON string) in your `.env` file.
+
+---
