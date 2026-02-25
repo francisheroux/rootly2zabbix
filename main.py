@@ -162,12 +162,21 @@ def _handle_resolved(event) -> None:
     except ZabbixAPIError as e:
         logger.warning(json.dumps({
             "event": "trigger_manual_close_skipped",
-            "hint": "API user may lack Admin role required for trigger.update",
+            "hint": "API user may lack Admin role, or trigger is discovered (set manual_close on the template instead)",
             "error": str(e),
         }))
 
-    # Step 3: Close the event
-    zabbix.acknowledge(event.zabbix_event_id, message=msg, action=ACTION_CLOSE | ACTION_MESSAGE)
+    # Step 3: close the event; fall back to comment-only if close is not allowed
+    try:
+        zabbix.acknowledge(event.zabbix_event_id, message=msg, action=ACTION_CLOSE | ACTION_MESSAGE)
+    except ZabbixAPIError as e:
+        logger.warning(json.dumps({
+            "event": "zabbix_close_failed_falling_back_to_ack",
+            "hint": "Enable 'Allow Manual Close' on the template trigger in Zabbix",
+            "error": str(e),
+        }))
+        fallback_msg = msg + ' — unable to close in Zabbix. Enable "Allow Manual Close" on this trigger.'
+        zabbix.acknowledge(event.zabbix_event_id, message=fallback_msg, action=ACTION_ACKNOWLEDGE | ACTION_MESSAGE)
 
 
 def _handle_mitigated(event) -> None:
