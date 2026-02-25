@@ -173,5 +173,5 @@ class TestZabbixClient:
         assert ACTION_CLOSE == 1
         assert ACTION_ACKNOWLEDGE == 2
         assert ACTION_MESSAGE == 4
-        assert ACTION_SEVERITY == 16
-        assert ACTION_UNACKNOWLEDGE == 8
+        assert ACTION_SEVERITY == 8
+        assert ACTION_UNACKNOWLEDGE == 16
