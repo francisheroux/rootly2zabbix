@@ -114,11 +114,7 @@ def _route_event(event) -> None:
             _handle_resolved(event)
         return
 
-    if et == "incident.mitigated":
-        _handle_mitigated(event)
-        return
-
-    if et == "incident.updated":
+if et == "incident.updated":
         ack_at_prev = prev.get("acknowledged_at")
         ack_at_curr = (event.raw_payload.get("data") or {}).get("acknowledged_at")
 
@@ -177,14 +173,6 @@ def _handle_resolved(event) -> None:
         }))
         fallback_msg = msg + ' — unable to close in Zabbix. Enable "Allow Manual Close" on this trigger.'
         zabbix.acknowledge(event.zabbix_event_id, message=fallback_msg, action=ACTION_ACKNOWLEDGE | ACTION_MESSAGE)
-
-
-def _handle_mitigated(event) -> None:
-    msg = "Mitigated in Rootly"
-    if event.incident_id:
-        msg += f" (incident #{event.incident_id})"
-    logger.info(json.dumps({"event": "zabbix_comment", "zabbix_event_id": event.zabbix_event_id}))
-    zabbix.acknowledge(event.zabbix_event_id, message=msg, action=ACTION_MESSAGE)
 
 
 def _handle_acknowledged(event) -> None:
