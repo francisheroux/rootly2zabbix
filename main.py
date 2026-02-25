@@ -115,22 +115,22 @@ def _route_event(event) -> None:
         return
 
     if et == "incident.updated":
-            ack_at_prev = prev.get("acknowledged_at")
-            ack_at_curr = (event.raw_payload.get("data") or {}).get("acknowledged_at")
+        ack_at_prev = prev.get("acknowledged_at")
+        ack_at_curr = (event.raw_payload.get("data") or {}).get("acknowledged_at")
 
-            if ack_at_prev is None and ack_at_curr is not None:
-                _handle_acknowledged(event)
-            elif ack_at_prev is not None and ack_at_curr is None:
-                _handle_unacknowledged(event)
-            elif "severity" in prev and config.rootly_severity_updates_zabbix:
-                _handle_severity_change(event)
-            elif "summary" in prev or event.note:
-                _handle_note_added(event)
-            else:
-                logger.info(json.dumps({"event": "no_action", "event_type": et}))
-            return
+        if ack_at_prev is None and ack_at_curr is not None:
+            _handle_acknowledged(event)
+        elif ack_at_prev is not None and ack_at_curr is None:
+            _handle_unacknowledged(event)
+        elif "severity" in prev and config.rootly_severity_updates_zabbix:
+            _handle_severity_change(event)
+        elif "summary" in prev or event.note:
+            _handle_note_added(event)
+        else:
+            logger.info(json.dumps({"event": "no_action", "event_type": et}))
+        return
 
-        logger.info(json.dumps({"event": "unhandled_event_type", "event_type": et}))
+    logger.info(json.dumps({"event": "unhandled_event_type", "event_type": et}))
 
 
 # ---------------------------------------------------------------------------
