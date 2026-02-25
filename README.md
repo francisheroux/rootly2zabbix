@@ -169,6 +169,12 @@ journalctl -u rootly2zabbix -f
    - **Acknowledge** permission on the relevant triggers
 4. Copy the token into `ZABBIX_TOKEN`
 
+### Enable "Allow Manual Close" to allow Resolving of Alerts
+
+1. Go to **Data Collection → Template**
+2. Select Your Template's Triggers → **Select your Trigger "Allow manual close" → Update**
+   - (You can also multi select triggers for a Template and Mass Update them)
+
 ---
 
 ## Rootly Setup
@@ -214,6 +220,27 @@ The service returns HTTP 200 immediately and processes the Zabbix call asynchron
 
 Fix in Zabbix UI: **Configuration → Triggers → [edit trigger] → check "Allow manual close" → Update**
 
+#### Discovered triggers (LLD / network discovery)
+
+Discovered triggers are read-only — Zabbix will refuse to set `manual_close` even
+for a super-admin and will return:
+
+> "Cannot update manual_close for a discovered trigger"
+
+When that happens the service falls back gracefully: it adds a comment
+("Resolved in Rootly") without closing the problem, and logs a
+`zabbix_close_failed_falling_back_to_ack` warning.
+
+**Permanent fix:** enable "Allow Manual Close" on the **template** trigger, not the
+discovered instance.
+
+1. Go to **Configuration → Templates → [your template] → Triggers**
+2. Open the trigger that matches the discovered one
+3. Check **Allow manual close**
+4. Click **Update**
+
+All future discovered instances will inherit this flag automatically.
+
 ### How to inspect async errors
 
 ```bash
@@ -248,12 +275,13 @@ The service always returns 200 to Rootly immediately (before calling Zabbix) to 
 # Run unit tests
 pytest tests/
 
-# Send a test webhook (replace SECRET and payload as needed)
-TIMESTAMP=$(date +%s)
-BODY='{"event_type":"incident.resolved","data":{"id":"abc","title":"Test [ZABBIX:12345]"},"previous_values":{}}'
-SIG="t=${TIMESTAMP},v1=$(echo -n "${TIMESTAMP}.${BODY}" | openssl dgst -sha256 -hmac "$ROOTLY_WEBHOOK_SECRET" -hex | awk '{print $2}')"
-curl -X POST http://localhost:5000/webhook \
-  -H "Content-Type: application/json" \
-  -H "X-Rootly-Signature: ${SIG}" \
-  -d "$BODY"
+# Send a signed test webhook (ROOTLY_WEBHOOK_SECRET must be set in .env or environment)
+python3 send_test_webhook.py --event-type incident.updated.ack    --zabbix-event-id 12345
+python3 send_test_webhook.py --event-type incident.updated.unack  --zabbix-event-id 12345
+python3 send_test_webhook.py --event-type incident.resolved       --zabbix-event-id 12345
+python3 send_test_webhook.py --event-type incident.updated.severity --zabbix-event-id 12345
+python3 send_test_webhook.py --event-type incident.mitigated      --zabbix-event-id 12345
+
+# Watch logs to confirm Zabbix outcome
+journalctl -u rootly2zabbix -f
 ```

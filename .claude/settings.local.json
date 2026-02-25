@@ -13,7 +13,9 @@
       "WebFetch(domain:blog.zabbix.com)",
       "WebFetch(domain:www.zabbix.com)",
       "WebFetch(domain:noise.getoto.net)",
-      "WebFetch(domain:api.github.com)"
+      "WebFetch(domain:api.github.com)",
+      "Bash(echo EXIT: $?:*)",
+      "Bash(timeout 5 python:*)"
     ]
   }
 }
