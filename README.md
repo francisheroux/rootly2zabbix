@@ -1,30 +1,6 @@
 # rootly2zabbix
 
-Bidirectional Rootly ↔ Zabbix integration service. Receives Rootly webhook events and mirrors incident state changes (acknowledge, unacknowledge, severity, resolve, mitigate) back into Zabbix via the JSON-RPC API.
-
-> **Direction handled here:** Rootly → Zabbix
-> **Opposite direction** (Zabbix → Rootly): handled separately by the Zabbix webhook media type
-
----
-
-## How It Works
-
-```
-Rootly webhook POST
-    ↓
-Flask /webhook  (HMAC-SHA256 signature verification)
-    ↓
-Event parser    (extract event type, incident data, Zabbix event ID)
-    ↓
-Event router    (map Rootly event → Zabbix action)
-    ↓
-Zabbix JSON-RPC event.acknowledge
-```
-
-HTTP 200 is returned to Rootly **before** calling Zabbix, so transient Zabbix failures never cause Rootly to disable the webhook.
-
-
----
+Receives Rootly webhook events and mirrors incident state changes (acknowledge, unacknowledge, severity, resolve) back into Zabbix via the Zabbix API.
 
 ## Setup
 
@@ -108,12 +84,15 @@ journalctl -u rootly2zabbix -f
 2. Click **New Endpoint**
 3. Give it a **Title** (e.g. "rootly2zabbix-webhook")
 4. Set **URL** to `https://your-server:5000/webhook`
-5. Copy the **Signing Secret** — this is your `ROOTLY_WEBHOOK_SECRET` for `.env`
+5. Copy the **Secret** — this is your `ROOTLY_WEBHOOK_SECRET` for `.env`
 6. Add these **Event Triggers**: `incident.updated` and `incident.resolved`
 
 ### Pass the Zabbix Event ID
 
 This service needs to know which Zabbix event to update when a Rootly webhook arrives. The Zabbix `{EVENT.ID}` must travel from Zabbix into the Rootly incident when the alert is first created, so it can be read back here.
+
+1. In Rootly → **Settings → Custom Fields**, create a field with key `zabbix_event_id`
+2. In Zabbix, make sure the Rootly media type contains a value of `{EVENT.ID}`
 
 **How the ID flows:**
 
@@ -124,34 +103,6 @@ This service needs to know which Zabbix event to update when a Rootly webhook ar
 4. Rootly POSTs a webhook to this service
 5. This service reads the event ID and calls Zabbix
 ```
-
-The service checks these locations in order — use whichever is easiest to set up:
-
-| Priority | Where | Format |
-|---|---|---|
-| 1 | Custom dot-path (`ZABBIX_EVENTID_PATH` in `.env`) | any field path |
-| 2 | Rootly custom field `zabbix_event_id` | `12345` |
-| 3 | Incident label | `zabbix_eventid:12345` |
-| 4 | Incident title | `[ZABBIX:12345] Disk full` |
-
-**Option A — Custom field (recommended)**
-
-1. In Rootly → **Settings → Custom Fields**, create a field with key `zabbix_event_id`
-2. In your Zabbix media type script (the one that creates Rootly incidents), pass the event ID:
-   ```
-   "custom_fields": { "zabbix_event_id": "{EVENT.ID}" }
-   ```
-
-**Option B — Title embedding (simplest)**
-
-No Rootly custom field needed. In your Zabbix media type, prefix the incident title:
-
-```
-[ZABBIX:{EVENT.ID}] {TRIGGER.NAME}
-```
-
-
-
 ---
 
 ## Troubleshooting
