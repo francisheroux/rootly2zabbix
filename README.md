@@ -108,9 +108,7 @@ This allows the resolution of alerts, if you don't add this, it will only acknow
    }
 ```
 
-5. Set **URL** to `https://your-server:5000/webhook`
-6. Copy the **Secret** — this is your `ROOTLY_WEBHOOK_SECRET` for `.env`
-7. Add these **Event Triggers**: `incident.updated` and `incident.resolved`
+5. **Configuration** > seccrets: zabbix_api_token (WORK IN PROGRESS, FIGURING THIS OUT FOR ALERT AND WORKFLOW ALERT)
 
 ### Pass the Zabbix Event ID
 
