@@ -79,14 +79,38 @@ This allows the resolution of alerts, if you don't add this, it will only acknow
 
 ## Rootly Setup
 
-### Configure the webhook
+### Configure the workflows
 
-1. Go to **Rootly → Configuration → Webhooks**
-2. Click **New Endpoint**
-3. Give it a **Title** (e.g. "rootly2zabbix-webhook")
-4. Set **URL** to `https://your-server:5000/webhook`
-5. Copy the **Secret** — this is your `ROOTLY_WEBHOOK_SECRET` for `.env`
-6. Add these **Event Triggers**: `incident.updated` and `incident.resolved`
+1. Go to **Rootly → Configuration → Workflows**
+2. Click **Create Workflow** and select **Alert** workflow type
+3. Set these variables:
+      - **Name**: "Auto Acknowledge Original Alert in Zabbix"
+      - **Description**: "Acknowledges the original (non-workflow) alert in Zabbix once the identical Alert received in Rootly is acknowledged"
+      - **Triggers**: `Alert Status Updated`
+      - **Conditions**: Run this workflow if **all of** the following conditions are true (then add the following conditions)
+         - **Payload**: `$.original_source` **is** `Zabbix`
+         - **Status**: **is** `acknowledged`
+      - **Actions**: Add action "HTTP Client"
+         - **Url**:  `https://your-zabbix-url/api_jsonrpc.php`
+         - **Method**: `Post`
+         - **Body Parameters**:
+```json
+    {
+     "jsonrpc": "2.0",
+     "method": "event.acknowledge",
+     "params": {
+       "eventids": ["{{ alert.id }}"],
+       "action": 6,
+       "message": "Acknowledged in Rootly ({{ alert.short_id }}) by {{ alert.responders[0].name }}"
+     },
+     "auth": "{{ secrets.zabbix_api_token }}",
+     "id": 1
+   }
+```
+
+5. Set **URL** to `https://your-server:5000/webhook`
+6. Copy the **Secret** — this is your `ROOTLY_WEBHOOK_SECRET` for `.env`
+7. Add these **Event Triggers**: `incident.updated` and `incident.resolved`
 
 ### Pass the Zabbix Event ID
 
