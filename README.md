@@ -68,6 +68,7 @@ journalctl -u rootly2zabbix -f
 4. Copy the generated token (this is your `ZABBIX_TOKEN` for your `.env` file)
 
 ### Enable "Allow Manual Close" to allow Resolving of Alerts
+This allows the resolution of alerts, if you don't add this, it will only acknowledge alerts.
 
 1. Go to **Data Collection → Templates**
 2. Select your template → **Triggers** → open the trigger
