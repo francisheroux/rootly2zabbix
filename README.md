@@ -79,9 +79,17 @@ This allows the resolution of alerts, if you don't add this, it will only acknow
 
 ## Rootly Setup
 
-### Configure the workflows
+There are two different ways to set this up depending on how you handle alerts. Either you directly get alerts through Routes (Option A) or you use Workflows (Option B) to create the alerts that page users. This will cover both.
 
-1. Go to **Rootly → Configuration → Workflows**
+For both options, you wll need to add your Zabbix API key to **Configuration** > **Secrets** > **+ Create Secret**: 
+
+   - Name: `zabbix_api_token`
+   - Kind: `Built-in`
+   - Secret: Enter your Zabbix API Key
+
+### Option A: Configure workflow for Alerts that come through Routes 
+
+1. in Rootly, go to **Configuration → Workflows**
 2. Click **Create Workflow** and select **Alert** workflow type
 3. Set these variables:
       - **Name**: "Auto Acknowledge Original Alert in Zabbix"
