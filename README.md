@@ -79,7 +79,7 @@ This allows the resolution of alerts, if you don't add this, it will only acknow
 
 ## Rootly Setup
 
-There are two different ways to set this up depending on how you handle alerts. Either you directly get alerts through Routes **(Option A)** or you use Workflows **(Option B)** to create the alerts that page users. This will cover both.
+There are two different ways to set this up depending on how you handle alerts. Either you directly get alerts through Routes **(Option A)** or you use Workflows **(Option B)** to create an Incident first and then an alert that pages users. This will cover both.
 
 For both options, you wll need to add your Zabbix API key in Rootly to **Configuration** > **Secrets** > **+ Create Secret**: 
 
@@ -116,14 +116,23 @@ For both options, you wll need to add your Zabbix API key in Rootly to **Configu
    }
 ```
 
-### Option B: Configure workflow for Alerts that come through other Workflows (i.e. Incident gets created first upon receiving a Zabbix alert and then sends an alert after whatever workflows run that you set) 
+### Option B: Configure workflow for Alerts that come through other Workflows
 
-## Create Custom Field for Zabbix Event ID
+1. Create a Custom Field for Zabbix Event ID in **Configuration > Fields > Custom Fields**, create a field with key `zabbix_event_id` with **Field Type** "Text"
+    - Once you've created it, click on it and it will show you the **ID** for this (i.e. e5b462b3-c2e1-44c6-a592-52sdfs6c42dba4). *Copy this as you will need it for the Custom Fields Mapping*
+2. In Rootly, edit the Workflow (**Configuration → Workflows**) that creates the Incident when you receive an alert from Zabbix
+      - Add the below to your `Create Incident` action under `Custom Fields Mapping` and replace `your_custom_field_ID` with your Custom Field ID from Step 1
+```json
+{
+   "form_field_selections_attributes":[
+    {
+      "form_field_id":"your_custom_field_ID",
+      "value": "{{ alert.data.alert_id }}"
+    }]
+}
+```
+3. 
 
-This service needs to know which Zabbix event to update when a Rootly webhook arrives. The Zabbix `{EVENT.ID}` must travel from Zabbix into the Rootly incident when the alert is first created, so it can be read back here.
-
-1. In Rootly → **Settings → Custom Fields**, create a field with key `zabbix_event_id`
-2. In Zabbix, make sure the Rootly media type contains a value of `{EVENT.ID}`
 
 **How the ID flows:**
 
