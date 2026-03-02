@@ -79,9 +79,9 @@ This allows the resolution of alerts, if you don't add this, it will only acknow
 
 ## Rootly Setup
 
-There are two different ways to set this up depending on how you handle alerts. Either you directly get alerts through Routes (Option A) or you use Workflows (Option B) to create the alerts that page users. This will cover both.
+There are two different ways to set this up depending on how you handle alerts. Either you directly get alerts through Routes **(Option A)** or you use Workflows **(Option B)** to create the alerts that page users. This will cover both.
 
-For both options, you wll need to add your Zabbix API key to **Configuration** > **Secrets** > **+ Create Secret**: 
+For both options, you wll need to add your Zabbix API key in Rootly to **Configuration** > **Secrets** > **+ Create Secret**: 
 
    - Name: `zabbix_api_token`
    - Kind: `Built-in`
@@ -89,7 +89,7 @@ For both options, you wll need to add your Zabbix API key to **Configuration** >
 
 ### Option A: Configure workflow for Alerts that come through Routes 
 
-1. in Rootly, go to **Configuration → Workflows**
+1. In Rootly, go to **Configuration → Workflows**
 2. Click **Create Workflow** and select **Alert** workflow type
 3. Set these variables:
       - **Name**: "Auto Acknowledge Original Alert in Zabbix"
@@ -116,9 +116,9 @@ For both options, you wll need to add your Zabbix API key to **Configuration** >
    }
 ```
 
-5. **Configuration** > seccrets: zabbix_api_token (WORK IN PROGRESS, FIGURING THIS OUT FOR ALERT AND WORKFLOW ALERT)
+### Option B: Configure workflow for Alerts that come through other Workflows (i.e. Incident gets created first upon receiving a Zabbix alert and then sends an alert after whatever workflows run that you set) 
 
-### Pass the Zabbix Event ID
+## Create Custom Field for Zabbix Event ID
 
 This service needs to know which Zabbix event to update when a Rootly webhook arrives. The Zabbix `{EVENT.ID}` must travel from Zabbix into the Rootly incident when the alert is first created, so it can be read back here.
 
