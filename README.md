@@ -81,7 +81,7 @@ This allows the resolution of alerts, if you don't add this, it will only acknow
 
 There are two different ways to set this up depending on how you handle alerts. Either you directly get alerts through Routes **(Option A)** or you use Workflows **(Option B)** to create an Incident first and then an alert that pages users. This will cover both.
 
-For both options, you wll need to add your Zabbix API key in Rootly to **Configuration** > **Secrets** > **+ Create Secret**: 
+(THIS MIGHT NOT BE NEEDED ANYMORE, ONLY ADD ROOTLY WEBHOOK SECRET) For both options, you wll need to add your Zabbix API key in Rootly to **Configuration** > **Secrets** > **+ Create Secret**: 
 
    - Name: `zabbix_api_token`
    - Kind: `Built-in`
