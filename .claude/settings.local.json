@@ -15,7 +15,8 @@
       "WebFetch(domain:noise.getoto.net)",
       "WebFetch(domain:api.github.com)",
       "Bash(echo EXIT: $?:*)",
-      "Bash(timeout 5 python:*)"
+      "Bash(timeout 5 python:*)",
+      "WebFetch(domain:gunicorn.org)"
     ]
   }
 }

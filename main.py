@@ -1,3 +1,4 @@
+import hmac
 import json
 import logging
 import threading
@@ -66,6 +67,82 @@ def webhook():
     t.start()
 
     return jsonify({"status": "accepted"}), 200
+
+
+@app.route("/acknowledge", methods=["POST"])
+def acknowledge_webhook():
+    api_key = request.headers.get("X-API-Key", "")
+    if not hmac.compare_digest(api_key, config.rootly_webhook_secret):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    payload = request.get_json(silent=True)
+    if not payload:
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    zabbix_event_id = payload.get("zabbix_event_id")
+    message = payload.get("message", "Acknowledged in Rootly")
+
+    if not zabbix_event_id:
+        return jsonify({"error": "zabbix_event_id required"}), 400
+
+    def _process():
+        try:
+            zabbix.acknowledge(zabbix_event_id, message, ACTION_ACKNOWLEDGE | ACTION_MESSAGE)
+            logger.info(json.dumps({"event": "zabbix_ack", "zabbix_event_id": zabbix_event_id}))
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(json.dumps({"event": "ack_error", "zabbix_event_id": zabbix_event_id, "error": str(e)}))
+
+    threading.Thread(target=_process, daemon=True).start()
+    return jsonify({"status": "accepted"}), 202
+
+
+@app.route("/resolve", methods=["POST"])
+def resolve_webhook():
+    api_key = request.headers.get("X-API-Key", "")
+    if not hmac.compare_digest(api_key, config.rootly_webhook_secret):
+        return jsonify({"error": "Unauthorized"}), 401
+
+    payload = request.get_json(silent=True)
+    if not payload:
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    zabbix_event_id = payload.get("zabbix_event_id")
+    message = payload.get("message", "Resolved in Rootly")
+
+    if not zabbix_event_id:
+        return jsonify({"error": "zabbix_event_id required"}), 400
+
+    def _process():
+        try:
+            try:
+                event_details = zabbix.get_event(zabbix_event_id)
+                trigger_id = event_details.get("objectid")
+                if trigger_id:
+                    zabbix.enable_trigger_manual_close(trigger_id)
+                    logger.info(json.dumps({"event": "trigger_manual_close_enabled", "trigger_id": trigger_id}))
+            except ZabbixAPIError as e:
+                logger.warning(json.dumps({
+                    "event": "trigger_manual_close_skipped",
+                    "hint": "API user may lack Admin role, or trigger is discovered (set manual_close on the template instead)",
+                    "error": str(e),
+                }))
+
+            try:
+                zabbix.acknowledge(zabbix_event_id, message, ACTION_CLOSE | ACTION_MESSAGE)
+                logger.info(json.dumps({"event": "zabbix_close", "zabbix_event_id": zabbix_event_id}))
+            except ZabbixAPIError as e:
+                logger.warning(json.dumps({
+                    "event": "zabbix_close_failed_falling_back_to_ack",
+                    "hint": 'Enable "Allow Manual Close" on the template trigger in Zabbix',
+                    "error": str(e),
+                }))
+                fallback_msg = message + ' — unable to close in Zabbix. Enable "Allow Manual Close" on this trigger.'
+                zabbix.acknowledge(zabbix_event_id, fallback_msg, ACTION_ACKNOWLEDGE | ACTION_MESSAGE)
+        except Exception as e:  # pylint: disable=broad-except
+            logger.error(json.dumps({"event": "resolve_error", "zabbix_event_id": zabbix_event_id, "error": str(e)}))
+
+    threading.Thread(target=_process, daemon=True).start()
+    return jsonify({"status": "accepted"}), 202
 
 
 # ---------------------------------------------------------------------------
