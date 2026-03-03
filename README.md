@@ -1,30 +1,6 @@
 # rootly2zabbix
 
-Bidirectional Rootly ↔ Zabbix integration service. Receives Rootly webhook events and mirrors incident state changes (acknowledge, unacknowledge, severity, resolve, mitigate) back into Zabbix via the JSON-RPC API.
-
-> **Direction handled here:** Rootly → Zabbix
-> **Opposite direction** (Zabbix → Rootly): handled separately by the Zabbix webhook media type
-
----
-
-## How It Works
-
-```
-Rootly webhook POST
-    ↓
-Flask /webhook  (HMAC-SHA256 signature verification)
-    ↓
-Event parser    (extract event type, incident data, Zabbix event ID)
-    ↓
-Event router    (map Rootly event → Zabbix action)
-    ↓
-Zabbix JSON-RPC event.acknowledge
-```
-
-HTTP 200 is returned to Rootly **before** calling Zabbix, so transient Zabbix failures never cause Rootly to disable the webhook.
-
-
----
+Receives Rootly webhook events and mirrors incident state changes (acknowledge, unacknowledge, severity, resolve) back into Zabbix via the Zabbix API.
 
 ## Setup
 
@@ -92,6 +68,7 @@ journalctl -u rootly2zabbix -f
 4. Copy the generated token (this is your `ZABBIX_TOKEN` for your `.env` file)
 
 ### Enable "Allow Manual Close" to allow Resolving of Alerts
+This allows the resolution of alerts, if you don't add this, it will only acknowledge alerts.
 
 1. Go to **Data Collection → Templates**
 2. Select your template → **Triggers** → open the trigger
@@ -102,18 +79,60 @@ journalctl -u rootly2zabbix -f
 
 ## Rootly Setup
 
-### Configure the webhook
+There are two different ways to set this up depending on how you handle alerts. Either you directly get alerts through Routes **(Option A)** or you use Workflows **(Option B)** to create an Incident first and then an alert that pages users. This will cover both.
 
-1. Go to **Rootly → Configuration → Webhooks**
-2. Click **New Endpoint**
-3. Give it a **Title** (e.g. "rootly2zabbix-webhook")
-4. Set **URL** to `https://your-server:5000/webhook`
-5. Copy the **Signing Secret** — this is your `ROOTLY_WEBHOOK_SECRET` for `.env`
-6. Add these **Event Triggers**: `incident.updated` and `incident.resolved`
+For both options, you wll need to add your Zabbix API key in Rootly to **Configuration** > **Secrets** > **+ Create Secret**: 
 
-### Pass the Zabbix Event ID
+   - Name: `zabbix_api_token`
+   - Kind: `Built-in`
+   - Secret: Enter your Zabbix API Key
 
-This service needs to know which Zabbix event to update when a Rootly webhook arrives. The Zabbix `{EVENT.ID}` must travel from Zabbix into the Rootly incident when the alert is first created, so it can be read back here.
+### Option A: Configure workflow for Alerts that come through Routes 
+
+1. In Rootly, go to **Configuration → Workflows**
+2. Click **Create Workflow** and select **Alert** workflow type
+3. Set these variables:
+      - **Name**: "Auto Acknowledge Original Alert in Zabbix"
+      - **Description**: "Acknowledges the original (non-workflow) alert in Zabbix once the identical Alert received in Rootly is acknowledged"
+      - **Triggers**: `Alert Status Updated`
+      - **Conditions**: Run this workflow if **all of** the following conditions are true (then add the following conditions)
+         - **Payload**: `$.original_source` **is** `Zabbix`
+         - **Status**: **is** `acknowledged`
+      - **Actions**: Add action "HTTP Client"
+         - **Url**:  `https://your-zabbix-url/api_jsonrpc.php`
+         - **Method**: `Post`
+         - **Body Parameters**:
+```json
+    {
+     "jsonrpc": "2.0",
+     "method": "event.acknowledge",
+     "params": {
+       "eventids": ["{{ alert.id }}"],
+       "action": 6,
+       "message": "Acknowledged in Rootly ({{ alert.short_id }}) by {{ alert.responders[0].name }}"
+     },
+     "auth": "{{ secrets.zabbix_api_token }}",
+     "id": 1
+   }
+```
+
+### Option B: Configure workflow for Alerts that come through other Workflows
+
+1. Create a Custom Field for Zabbix Event ID in **Configuration > Fields > Custom Fields**, create a field with key `zabbix_event_id` with **Field Type** "Text"
+    - Once you've created it, click on it and it will show you the **ID** for this (i.e. e5b462b3-c2e1-44c6-a592-52sdfs6c42dba4). *Copy this as you will need it for the Custom Fields Mapping*
+2. In Rootly, edit the Workflow (**Configuration → Workflows**) that creates the Incident when you receive an alert from Zabbix
+      - Add the below to your `Create Incident` action under `Custom Fields Mapping` and replace `your_custom_field_ID` with your Custom Field ID from Step 1
+```json
+{
+   "form_field_selections_attributes":[
+    {
+      "form_field_id":"your_custom_field_ID",
+      "value": "{{ alert.data.alert_id }}"
+    }]
+}
+```
+3. 
+
 
 **How the ID flows:**
 
@@ -124,34 +143,6 @@ This service needs to know which Zabbix event to update when a Rootly webhook ar
 4. Rootly POSTs a webhook to this service
 5. This service reads the event ID and calls Zabbix
 ```
-
-The service checks these locations in order — use whichever is easiest to set up:
-
-| Priority | Where | Format |
-|---|---|---|
-| 1 | Custom dot-path (`ZABBIX_EVENTID_PATH` in `.env`) | any field path |
-| 2 | Rootly custom field `zabbix_event_id` | `12345` |
-| 3 | Incident label | `zabbix_eventid:12345` |
-| 4 | Incident title | `[ZABBIX:12345] Disk full` |
-
-**Option A — Custom field (recommended)**
-
-1. In Rootly → **Settings → Custom Fields**, create a field with key `zabbix_event_id`
-2. In your Zabbix media type script (the one that creates Rootly incidents), pass the event ID:
-   ```
-   "custom_fields": { "zabbix_event_id": "{EVENT.ID}" }
-   ```
-
-**Option B — Title embedding (simplest)**
-
-No Rootly custom field needed. In your Zabbix media type, prefix the incident title:
-
-```
-[ZABBIX:{EVENT.ID}] {TRIGGER.NAME}
-```
-
-
-
 ---
 
 ## Troubleshooting
