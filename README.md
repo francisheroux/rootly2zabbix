@@ -97,8 +97,8 @@ journalctl -u rootly2zabbix -f
 
 1. Go to **Users → API tokens**
 2. Click **Create API token**
-3. Assign the token to a user (normally the same user as your Rootly Media Type) with at minimum:
-   - **Read** access to the host groups you want to sync
+3. Assign the token to a user (normally the same user as your Rootly Media Type.) with the following permissions:
+   - **Read** and **Write** access to the host groups you want to sync (write is required for closing alerts)
    - **Acknowledge** permission on the relevant triggers
 4. Copy the generated token (this is your `ZABBIX_TOKEN` for your `.env` file)
 
