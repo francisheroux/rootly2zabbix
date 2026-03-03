@@ -38,11 +38,44 @@ sudo systemctl start rootly2zabbix
 
 ### 5. Whitelist Rootly IP Addresses
 
-Make sure you have whitelisted the Rootly IP's (TCP Port 5000) in your inbound rules for where your Zabbix Server is hosted
+Make sure you have whitelisted the Rootly IP's (TCP Port 5000) in your inbound firewall rules for where your Zabbix Server is hosted
 
 https://docs.rootly.com/integrations/ip-whitelist
 
-### 6. Verify
+### 6. Setting up Apache Reverse Proxy to allow HTTPS requests
+
+1: Enable Apache proxy modules (if not already enabled):
+  `sudo a2enmod proxy proxy_http`
+  `sudo systemctl restart apache2`
+
+2: Find your Apache vhost config (i.e. `apache2-le-ssl.conf` if you used "Let's Encrypt" for signing your HTTPS certificate):
+  `ls /etc/apache2/sites-enabled/`
+
+  Edit the file and add the below within your `<Virtual Host *:443> </VirtualHost>` block
+
+  
+      # Reverse Proxy to handle HTTPS requests from Rootly
+      ProxyPass /webhook http://127.0.0.1:5000/webhook
+      ProxyPassReverse /webhook http://127.0.0.1:5000/webhook
+      ProxyPass /acknowledge http://127.0.0.1:5000/acknowledge
+      ProxyPassReverse /acknowledge http://127.0.0.1:5000/acknowledge
+      ProxyPass /resolve http://127.0.0.1:5000/resolve
+      ProxyPassReverse /resolve http://127.0.0.1:5000/resolve
+      ProxyPass /health http://127.0.0.1:5000/health
+      ProxyPassReverse /health http://127.0.0.1:5000/health
+
+3: Verify configuration is correct
+   
+  ```bash
+  sudo a2enmod proxy proxy_http
+  # configtest should say Syntax OK before you reload
+  sudo apache2ctl configtest
+  sudo systemctl reload apache2
+  ```
+
+
+
+### 7. Verify
 
 ```bash
 # Service status
