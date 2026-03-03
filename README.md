@@ -42,7 +42,7 @@ Make sure you have whitelisted the Rootly IP's (TCP Port 5000) in your inbound f
 
 https://docs.rootly.com/integrations/ip-whitelist
 
-### 6. Setting up Apache Reverse Proxy to allow HTTPS requests
+### 6. Setting up Apache Reverse Proxy to allow HTTPS requests (skip this step if not using HTTPS)
 
 1: Enable Apache proxy modules (if not already enabled):
   `sudo a2enmod proxy proxy_http`
