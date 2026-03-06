@@ -30,7 +30,7 @@ Receives Rootly webhook events and mirrors alert state changes (acknowledge and 
   - All webhook processing happens in a background thread so the service immediately returns 200 OK to Rootly (preventing Rootly from disabling the webhook on transient Zabbix   
   errors)
 
-### Requirements
+## Requirements
 
   - Rootly Media Type in Zabbix (I have created one here: https://github.com/zabbix/zabbix/pull/166 which is currently a PR. If you have your own, make sure it includes key `eventid` with value `{EVENT.ID}` so Rootly can match the Zabbix Event ID of the alert)
     
@@ -43,7 +43,7 @@ Receives Rootly webhook events and mirrors alert state changes (acknowledge and 
 1. Go to **Users > API tokens**
 2. Click **Create API token**
 3. Assign the token to a user (normally the same user as your Rootly Media Type.) with read-write access to all groups. 
-4. Copy the generated token (this is your `ZABBIX_TOKEN` for your `.env` file in rootly2zabbix)
+4. Copy the generated token (this is your `ZABBIX_TOKEN` for your `.env` file in rootly2zabbix later on)
 
 ### Enable "Allow Manual Close" to allow Resolving of Alerts
 This allows the resolution of alerts, if you don't add this, it will only acknowledge alerts.
@@ -79,6 +79,7 @@ There are two different ways to set this up depending on how you handle alerts. 
          - **Method**: `Post`
          - **Succeed On Status**: `202`
          - **Header Parameters**: `{"X-API-Key": "{{ secrets.rootly_webhook_secret }}","Content-Type": "application/json"}`
+         - **Secret**: Copy this. This will go into your `.env` file as the `ROOTLY_WEBHOOK_SECRET` in rootly2zabbix later
          - **Body Parameters**:
 ```json
   {
@@ -146,6 +147,7 @@ There are two different ways to set this up depending on how you handle alerts. 
          - **Method**: `Post`
          - **Succeed On Status**: `202`
          - **Header Parameters**: `{"X-API-Key": "{{ secrets.rootly_webhook_secret }}","Content-Type": "application/json"}`
+         - **Secret**: Copy this. This will go into your `.env` file as the `ROOTLY_WEBHOOK_SECRET`
          - **Body Parameters**:
 ```json
  {%- assign zabbix_id = nil -%}
