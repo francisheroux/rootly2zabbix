@@ -1,17 +1,34 @@
 # rootly2zabbix
 
-Receives Rootly webhook events and mirrors incident state changes (acknowledge, unacknowledge, severity, resolve) back into Zabbix via the Zabbix API.
+Receives Rootly webhook events and mirrors alert state changes (acknowledge and resolved) back into Zabbix via the Zabbix API (inspired by `sonic-com`'s [pagerduty2zabbix](https://github.com/sonic-com/pagerduty2zabbix))
 
-**The flow**
+## How rootly2zabbix Works
 
-```
-1. Zabbix fires an alert
-2. Zabbix media type creates a Rootly alert
-3. You acknowledge / resolve in Rootly
-4. Rootly POSTs a webhook to rootly2zabbix service through the Rootly Workflows
-5. rootly2zabbix service reads the Zabbix alert event ID and calls Zabbix API
-```
----
+  rootly2zabbix is a small Flask web service that acts as a bridge between [Rootly](https://rootly.com) (an incident management platform) and [Zabbix](https://www.zabbix.com/) (open source monitoring platform). 
+  
+  When something happens to an alert in Rootly, this bridge reflects that change back into the corresponding Zabbix event (acknowledge/resolved).
+
+### The Core Flow
+
+  1. Rootly sends a webhook to this service whenever an alert is acknowledged or resolved.
+  2. The service verifies the request is genuinely from Rootly using HMAC-SHA256 signature verification (replay attack protection included — rejects requests older than 5 minutes).
+  3. The Zabbix event ID is extracted from the Rootly alert payload.
+  4. The event is routed to the appropriate Zabbix action based on event type.
+  5. Zabbix is updated via its JSON-RPC API (event.acknowledge).
+
+#### Direct Endpoints (for Rootly Workflows)
+
+  Because Rootly doesn't have built-in webhooks endpoints for alerts being acknowleged or resolved, two endpoints were created so that Rootly      
+  Workflows can call directly:
+
+  - POST /acknowledge: Acknowledges a Zabbix event by ID
+  - POST /resolve: Closes a Zabbix event by ID 
+
+#### Infrastructure
+
+  - Runs as a systemd service using gunicorn
+  - All webhook processing happens in a background thread so the service immediately returns 200 OK to Rootly (preventing Rootly from disabling the webhook on transient Zabbix   
+  errors)
 
 ### Requirements
 
@@ -19,7 +36,162 @@ Receives Rootly webhook events and mirrors incident state changes (acknowledge, 
     
   - Zabbix Alert Source in Rootly (the README.md in the Rootly Media Type has instructions for this if you don't have one setup already)
 
-## Setup
+## Zabbix Setup
+
+### Create API token
+
+1. Go to **Users > API tokens**
+2. Click **Create API token**
+3. Assign the token to a user (normally the same user as your Rootly Media Type.) with read-write access to all groups. 
+4. Copy the generated token (this is your `ZABBIX_TOKEN` for your `.env` file in rootly2zabbix)
+
+### Enable "Allow Manual Close" to allow Resolving of Alerts
+This allows the resolution of alerts, if you don't add this, it will only acknowledge alerts.
+
+1. Go to **Data Collection > Templates**
+2. Select your template > **Triggers** > open the trigger
+3. Check **Allow manual close** > **Update**
+   - You can also multi-select triggers and use **Mass Update**
+
+---
+
+## Rootly Setup
+
+There are two different ways to set this up depending on how you handle alerts. Either you directly get alerts through Routes **(Option A)** or you use Workflows **(Option B)** to create an Incident first and then an alert that pages users. This will cover both.
+
+  - Create a Custom Field for Zabbix alert Event ID in **Alerts > Alert Sources > Zabbix > Fields > + Add Field**, create a field with key `zabbix_event_id` with `{{ alert.data.alert_id }}` as the value (click on Zabbix alert to make sure this fills in the Alert ID properly in the preview). This is how Rootly properly identifies the right alert to ack/resolve in Zabbix
+
+### Option A: Configure workflow for Alerts that come through Routes 
+
+#### Acknowledge Original Alert Workflow from Routes
+
+1. In Rootly, go to **Configuration > Workflows**
+2. Click **Create Workflow** and select **Alert** workflow type
+3. Set these variables:
+      - **Name**: "Auto Acknowledge Original Alert in Zabbix"
+      - **Description**: "Acknowledges the original (non-workflow) alert in Zabbix once the identical Alert received in Rootly is acknowledged"
+      - **Triggers**: `Alert Status Updated`
+      - **Conditions**: Run this workflow if **all of** the following conditions are true (then add the following conditions)
+         - **Payload**: `$.original_source` **is** `Zabbix`
+         - **Status**: **is** `acknowledged`
+      - **Actions**: Add action "HTTP Client"
+         - **Url**:  `https://your-zabbix-url/acknowledge` or if using HTTP `http://your-zabbix-url:5000/acknowledge`
+         - **Method**: `Post`
+         - **Succeed On Status**: `202`
+         - **Header Parameters**: `{"X-API-Key": "{{ secrets.rootly_webhook_secret }}","Content-Type": "application/json"}`
+         - **Body Parameters**:
+```json
+  {
+    "zabbix_event_id": "{{ alert.data.alert_id }}",
+    "message": "Acknowledged in Rootly ({{ alert.short_id }}) by {{ PERSON WHO ACK THE ALERT (WIP) }}"
+  }
+```
+
+#### Resolve Original Alert Workflow from Routes
+
+1. In Rootly, go to **Configuration > Workflows**
+2. Click **Create Workflow** and select **Alert** workflow type
+3. Set these variables:
+      - **Name**: "Auto Resolve Original Alert in Zabbix"
+      - **Description**: "Resolves the original (non-workflow) alert in Zabbix once the identical Alert received in Rootly is marked resolved"
+      - **Triggers**: `Alert Status Updated`
+      - **Conditions**: Run this workflow if **all of** the following conditions are true (then add the following conditions)
+         - **Payload**: `$.original_source` **is** `Zabbix`
+         - **Status**: **is** `resolved`
+      - **Actions**: Add action "HTTP Client"
+         - **Url**:  `https://your-zabbix-url/resolve` or if using HTTP `http://your-zabbix-url:5000/resolve`
+         - **Method**: `Post`
+         - **Succeed On Status**: `202`
+         - **Header Parameters**: `{"X-API-Key": "{{ secrets.rootly_webhook_secret }}","Content-Type": "application/json"}`
+         - **Body Parameters**:
+```json
+  {
+    "zabbix_event_id": "{{ alert.data.alert_id }}",
+    "message": "Resolved in Rootly ({{ alert.short_id }}) by {{ PERSON WHO ACK THE ALERT AND RESOLVE MESSAGE (WIP) }}"
+  }
+```
+
+### Option B: Configure workflow for Alerts that come through other Workflows
+
+#### Before adding new Workflows, perform the following to make sure the Zabbix Event ID for the alert is attached to the Incident
+
+1. Create a Custom Form Field for Zabbix Event ID in **Configuration > Fields > Custom Fields**, create a field with key `zabbix_event_id` with **Field Type** "Text"
+   - Once you've created it, click on it and it will show you its **ID** (i.e. e5b46-4c6-a592-52s...) *Copy this as you will need it for the Custom Fields Mapping*
+2. Get this Custom Field ID by **Configuration > Alert Fields >  click on it and it will show you the **ID** for this (i.e. e5b462b3-c2e1-44c6-a592-52sdfs6c42dba4). *Copy this as you will need it for the Custom Fields Mapping* 
+3. In Rootly, edit the Workflow (**Configuration > Workflows**) that creates the Incident when you receive an alert from Zabbix
+      - Add the below to your `Create Incident` action under `Custom Fields Mapping` and replace `your_custom_field_ID` with your Custom Field ID from Step 1
+```json
+{
+   "form_field_selections_attributes":[
+    {
+      "form_field_id":"your_custom_field_ID",
+      "value": "{{ alert.data.alert_id }}"
+    }]
+}
+```
+#### Acknowledge Alert Workflow created from another Workflow
+
+1. In Rootly, go to **Configuration > Workflows**
+2. Click **Create Workflow** and select **Alert** workflow type
+3. Set these variables:
+      - **Name**: "Auto Acknowledge Workflow Alert in Zabbix"
+      - **Description**: "Acknowledges the alert from a workflow in Zabbix once the identical Alert received in Rootly is acknowledged"
+      - **Triggers**: `Alert Status Updated`
+      - **Conditions**: Run this workflow if **all of** the following conditions are true (then add the following conditions)
+         - **Source**: **is one of** `workflow`
+         - **Payload**: `$.workflow.id` **is** (enter the Workflow ID of the Workflow that pages the user. Put it inbetween forward slashses like "`/a246-4c6-a592-4343sd2343erew/`" and check **Use regexp**)
+         - **Status**: **is** `acknowledged`
+      - **Actions**: Add action "HTTP Client"
+         - **Url**:  `https://your-zabbix-url/acknowledge` or if using HTTP `http://your-zabbix-url:5000/acknowledge`
+         - **Method**: `Post`
+         - **Succeed On Status**: `202`
+         - **Header Parameters**: `{"X-API-Key": "{{ secrets.rootly_webhook_secret }}","Content-Type": "application/json"}`
+         - **Body Parameters**:
+```json
+ {%- assign zabbix_id = nil -%}
+  {%- for cfs in alert.incidents.first.custom_field_selections -%}
+    {%- if cfs.custom_field.slug == "zabbix_event_id" -%}
+      {%- assign zabbix_id = cfs.selected_options.value -%}
+    {%- endif -%}
+  {%- endfor -%}
+  {
+    "zabbix_event_id": "{{ zabbix_id }}",
+    "message": "Acknowledged in Rootly (#{{ alert.short_id }}) by {{ IN PROGRESS FIX THIS }}"
+  }
+```
+
+#### Resolve Alert Workflow created from another Workflow
+
+1. In Rootly, go to **Configuration > Workflows**
+2. Click **Create Workflow** and select **Alert** workflow type
+3. Set these variables:
+      - **Name**: "Auto Resolve Workflow Alert in Zabbix"
+      - **Description**: "Resolves the alert from a workflow in Zabbix once the identical Alert received in Rootly is resolved"
+      - **Triggers**: `Alert Status Updated`
+      - **Conditions**: Run this workflow if **all of** the following conditions are true (then add the following conditions)
+         - **Source**: **is one of** `workflow`
+         - **Payload**: `$.workflow.id` **is** (enter the Workflow ID of the Workflow that pages the user. Put it inbetween forward slashses like "`/a246-4c6-a592-4343sd2343erew/`" and check **Use regexp**)
+         - **Status**: **is** `resolved`
+      - **Actions**: Add action "HTTP Client"
+         - **Url**:  `https://your-zabbix-url/resolve` or if using HTTP `http://your-zabbix-url:5000/resolve`
+         - **Method**: `Post`
+         - **Succeed On Status**: `202`
+         - **Header Parameters**: `{"X-API-Key": "{{ secrets.rootly_webhook_secret }}","Content-Type": "application/json"}`
+         - **Body Parameters**:
+```json
+ {%- assign zabbix_id = nil -%}
+  {%- for cfs in alert.incidents.first.custom_field_selections -%}
+    {%- if cfs.custom_field.slug == "zabbix_event_id" -%}
+      {%- assign zabbix_id = cfs.selected_options.value -%}
+    {%- endif -%}
+  {%- endfor -%}
+  {
+    "zabbix_event_id": "{{ zabbix_id }}",
+    "message": "Resolved in Rootly (#{{ alert.short_id }}) by {{ IN PROGRESS FIXING }}"
+  }
+```
+
+## rootly2zabbix Setup
 
 ### 1. Clone / update the code
 
@@ -102,169 +274,11 @@ sudo systemctl status rootly2zabbix
 curl http://localhost:5000/health
 # or for Apache for users using HTTPS
 https://your-zabbix-server/health  
-# → {"status": "ok"}
+# > {"status": "ok"}
 
 # Live logs
 journalctl -u rootly2zabbix -f
 ```
-
-## Zabbix Setup
-
-### Create API token
-
-1. Go to **Users → API tokens**
-2. Click **Create API token**
-3. Assign the token to a user (normally the same user as your Rootly Media Type.) with read-write access to all groups. 
-4. Copy the generated token (this is your `ZABBIX_TOKEN` for your `.env` file)
-
-### Enable "Allow Manual Close" to allow Resolving of Alerts
-This allows the resolution of alerts, if you don't add this, it will only acknowledge alerts.
-
-1. Go to **Data Collection → Templates**
-2. Select your template → **Triggers** → open the trigger
-3. Check **Allow manual close** → **Update**
-   - You can also multi-select triggers and use **Mass Update**
-
----
-
-## Rootly Setup
-
-There are two different ways to set this up depending on how you handle alerts. Either you directly get alerts through Routes **(Option A)** or you use Workflows **(Option B)** to create an Incident first and then an alert that pages users. This will cover both.
-
-  - Create a Custom Field for Zabbix alert Event ID in **Alerts > Alert Sources > Zabbix > Fields > + Add Field**, create a field with key `zabbix_event_id` with `{{ alert.data.alert_id }}` as the value (click on Zabbix alert to make sure this fills in the Alert ID properly in the preview). This is how Rootly properly identifies the right alert to ack/resolve in Zabbix
-
-### Option A: Configure workflow for Alerts that come through Routes 
-
-#### Acknowledge Original Alert Workflow from Routes
-
-1. In Rootly, go to **Configuration → Workflows**
-2. Click **Create Workflow** and select **Alert** workflow type
-3. Set these variables:
-      - **Name**: "Auto Acknowledge Original Alert in Zabbix"
-      - **Description**: "Acknowledges the original (non-workflow) alert in Zabbix once the identical Alert received in Rootly is acknowledged"
-      - **Triggers**: `Alert Status Updated`
-      - **Conditions**: Run this workflow if **all of** the following conditions are true (then add the following conditions)
-         - **Payload**: `$.original_source` **is** `Zabbix`
-         - **Status**: **is** `acknowledged`
-      - **Actions**: Add action "HTTP Client"
-         - **Url**:  `https://your-zabbix-url/acknowledge` or if using HTTP `http://your-zabbix-url:5000/acknowledge`
-         - **Method**: `Post`
-         - **Succeed On Status**: `202`
-         - **Header Parameters**: `{"X-API-Key": "{{ secrets.rootly_webhook_secret }}","Content-Type": "application/json"}`
-         - **Body Parameters**:
-```json
-  {
-    "zabbix_event_id": "{{ alert.data.alert_id }}",
-    "message": "Acknowledged in Rootly ({{ alert.short_id }}) by {{ PERSON WHO ACK THE ALERT (WIP) }}"
-  }
-```
-
-#### Resolve Original Alert Workflow from Routes
-
-1. In Rootly, go to **Configuration → Workflows**
-2. Click **Create Workflow** and select **Alert** workflow type
-3. Set these variables:
-      - **Name**: "Auto Resolve Original Alert in Zabbix"
-      - **Description**: "Resolves the original (non-workflow) alert in Zabbix once the identical Alert received in Rootly is marked resolved"
-      - **Triggers**: `Alert Status Updated`
-      - **Conditions**: Run this workflow if **all of** the following conditions are true (then add the following conditions)
-         - **Payload**: `$.original_source` **is** `Zabbix`
-         - **Status**: **is** `resolved`
-      - **Actions**: Add action "HTTP Client"
-         - **Url**:  `https://your-zabbix-url/resolve` or if using HTTP `http://your-zabbix-url:5000/resolve`
-         - **Method**: `Post`
-         - **Succeed On Status**: `202`
-         - **Header Parameters**: `{"X-API-Key": "{{ secrets.rootly_webhook_secret }}","Content-Type": "application/json"}`
-         - **Body Parameters**:
-```json
-  {
-    "zabbix_event_id": "{{ alert.data.alert_id }}",
-    "message": "Resolved in Rootly ({{ alert.short_id }}) by {{ PERSON WHO ACK THE ALERT AND RESOLVE MESSAGE (WIP) }}"
-  }
-```
-
-### Option B: Configure workflow for Alerts that come through other Workflows
-
-#### Before adding new Workflows, perform the following to make sure the Zabbix Event ID for the alert is attached to the Incident
-
-1. Create a Custom Form Field for Zabbix Event ID in **Configuration > Fields > Custom Fields**, create a field with key `zabbix_event_id` with **Field Type** "Text"
-   - Once you've created it, click on it and it will show you its **ID** (i.e. e5b46-4c6-a592-52s...) *Copy this as you will need it for the Custom Fields Mapping*
-2. Get this Custom Field ID by **Configuration > Alert Fields >  click on it and it will show you the **ID** for this (i.e. e5b462b3-c2e1-44c6-a592-52sdfs6c42dba4). *Copy this as you will need it for the Custom Fields Mapping* 
-3. In Rootly, edit the Workflow (**Configuration → Workflows**) that creates the Incident when you receive an alert from Zabbix
-      - Add the below to your `Create Incident` action under `Custom Fields Mapping` and replace `your_custom_field_ID` with your Custom Field ID from Step 1
-```json
-{
-   "form_field_selections_attributes":[
-    {
-      "form_field_id":"your_custom_field_ID",
-      "value": "{{ alert.data.alert_id }}"
-    }]
-}
-```
-#### Acknowledge Alert Workflow created from another Workflow
-
-1. In Rootly, go to **Configuration → Workflows**
-2. Click **Create Workflow** and select **Alert** workflow type
-3. Set these variables:
-      - **Name**: "Auto Acknowledge Workflow Alert in Zabbix"
-      - **Description**: "Acknowledges the alert from a workflow in Zabbix once the identical Alert received in Rootly is acknowledged"
-      - **Triggers**: `Alert Status Updated`
-      - **Conditions**: Run this workflow if **all of** the following conditions are true (then add the following conditions)
-         - **Source**: **is one of** `workflow`
-         - **Payload**: `$.workflow.id` **is** (enter the Workflow ID of the Workflow that pages the user. Put it inbetween forward slashses like "`/a246-4c6-a592-4343sd2343erew/`" and check **Use regexp**)
-         - **Status**: **is** `acknowledged`
-      - **Actions**: Add action "HTTP Client"
-         - **Url**:  `https://your-zabbix-url/acknowledge` or if using HTTP `http://your-zabbix-url:5000/acknowledge`
-         - **Method**: `Post`
-         - **Succeed On Status**: `202`
-         - **Header Parameters**: `{"X-API-Key": "{{ secrets.rootly_webhook_secret }}","Content-Type": "application/json"}`
-         - **Body Parameters**:
-```json
- {%- assign zabbix_id = nil -%}
-  {%- for cfs in alert.incidents.first.custom_field_selections -%}
-    {%- if cfs.custom_field.slug == "zabbix_event_id" -%}
-      {%- assign zabbix_id = cfs.selected_options.value -%}
-    {%- endif -%}
-  {%- endfor -%}
-  {
-    "zabbix_event_id": "{{ zabbix_id }}",
-    "message": "Acknowledged in Rootly (#{{ alert.short_id }}) by {{ IN PROGRESS FIX THIS }}"
-  }
-```
-
-#### Resolve Alert Workflow created from another Workflow
-
-1. In Rootly, go to **Configuration → Workflows**
-2. Click **Create Workflow** and select **Alert** workflow type
-3. Set these variables:
-      - **Name**: "Auto Resolve Workflow Alert in Zabbix"
-      - **Description**: "Resolves the alert from a workflow in Zabbix once the identical Alert received in Rootly is resolved"
-      - **Triggers**: `Alert Status Updated`
-      - **Conditions**: Run this workflow if **all of** the following conditions are true (then add the following conditions)
-         - **Source**: **is one of** `workflow`
-         - **Payload**: `$.workflow.id` **is** (enter the Workflow ID of the Workflow that pages the user. Put it inbetween forward slashses like "`/a246-4c6-a592-4343sd2343erew/`" and check **Use regexp**)
-         - **Status**: **is** `resolved`
-      - **Actions**: Add action "HTTP Client"
-         - **Url**:  `https://your-zabbix-url/resolve` or if using HTTP `http://your-zabbix-url:5000/resolve`
-         - **Method**: `Post`
-         - **Succeed On Status**: `202`
-         - **Header Parameters**: `{"X-API-Key": "{{ secrets.rootly_webhook_secret }}","Content-Type": "application/json"}`
-         - **Body Parameters**:
-```json
- {%- assign zabbix_id = nil -%}
-  {%- for cfs in alert.incidents.first.custom_field_selections -%}
-    {%- if cfs.custom_field.slug == "zabbix_event_id" -%}
-      {%- assign zabbix_id = cfs.selected_options.value -%}
-    {%- endif -%}
-  {%- endfor -%}
-  {
-    "zabbix_event_id": "{{ zabbix_id }}",
-    "message": "Resolved in Rootly (#{{ alert.short_id }}) by {{ IN PROGRESS FIXING }}"
-  }
-```
-
-
-
 
 ## Troubleshooting
 
@@ -272,7 +286,7 @@ There are two different ways to set this up depending on how you handle alerts. 
 
 **Most common cause:** the trigger does not have "Allow manual close" enabled.
 
-Fix in Zabbix UI: **Configuration → Triggers → [edit trigger] → check "Allow manual close" → Update**
+Fix in Zabbix UI: **Configuration > Triggers > [edit trigger] > check "Allow manual close" > Update**
 
 ### How to inspect async errors
 
@@ -303,7 +317,7 @@ A successful close looks like:
 #### Check your Rootly webhook runs to see their status
 
 1. Acknowledge or Resolve an alert in Rootly
-2. Go to **Workflows → Your workflow settings → View Runs**
+2. Go to **Workflows > Your workflow settings > View Runs**
    
 #### In your Zabbix Server, you can view the requests coming in succesfully while watching the rootly2zabbix service logs
 ```bash
