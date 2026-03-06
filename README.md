@@ -36,6 +36,8 @@ Receives Rootly webhook events and mirrors alert state changes (acknowledge and 
     
   - Zabbix Alert Source in Rootly (the README.md in the Rootly Media Type has instructions for this if you don't have one setup already)
 
+---
+
 ## Zabbix Setup
 
 ### Create API token
@@ -192,6 +194,7 @@ There are two different ways to set this up depending on how you handle alerts. 
     "message": "Resolved in Rootly (#{{ alert.short_id }}) by {{ alert.responders | first | get:"name" }}"
   }
 ```
+---
 
 ## rootly2zabbix Setup
 
@@ -281,6 +284,7 @@ https://your-zabbix-server/health
 # Live logs
 journalctl -u rootly2zabbix -f
 ```
+---
 
 ## Troubleshooting
 
