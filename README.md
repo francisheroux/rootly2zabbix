@@ -48,7 +48,7 @@ Receives Rootly webhook events and mirrors alert state changes (acknowledge and 
 4. Copy the generated token (this is your `ZABBIX_TOKEN` for your `.env` file in rootly2zabbix later on)
 
 ### Note about alert closure
-If rootly2zabbix cannot close/resolve an alert, it will suppress the alert for 7 days with a note. This value can be custmized in your `.env` file under `ZABBIX_SUPPRESS_DURATION_DAYS`. 
+If rootly2zabbix cannot close/resolve an alert, it will suppress the alert for 3 days with a note. This value can be customized in your `.env` file under `ZABBIX_SUPPRESS_DURATION_DAYS`. 
 
 An example of this is that discovered triggers can only be closed with "Allow Manual Close" enabled on the trigger. The issue is that when this is enabled, if the underlying problem is not solved, it will close but will 
 immediately trigger again. The workaround for these kinds of scenario is to suppress the alert for the alotted time you think it will take for the underlying issue to actually be resolved. 
