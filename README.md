@@ -47,13 +47,11 @@ Receives Rootly webhook events and mirrors alert state changes (acknowledge and 
 3. Assign the token to a user (normally the same user as your Rootly Media Type.) with read-write access to all groups. 
 4. Copy the generated token (this is your `ZABBIX_TOKEN` for your `.env` file in rootly2zabbix later on)
 
-### Enable "Allow Manual Close" to allow Resolving of Alerts
-This allows the resolution of alerts, if you don't add this, it will only acknowledge alerts.
+### Note about alert closure
+If rootly2zabbix cannot close/resolve an alert, it will suppress the alert for 7 days with a note. This value can be custmized in your `.env` file. 
 
-1. Go to **Data Collection > Templates**
-2. Select your template > **Triggers** > open the trigger
-3. Check **Allow manual close** > **Update**
-   - You can also multi-select triggers and use **Mass Update**
+An example of this is that discovered triggers can only be closed with "Manual Closing" enabled on the trigger. The issue is that when this is enabled, if the underlying problem is not solved, it will close but will 
+immeidately trigger again. The workaround for these kinds of scenario is to suppress the alert for the alotted time you think it will take for the underlying issue to actually be resolved. 
 
 ---
 
@@ -284,38 +282,6 @@ https://your-zabbix-server/health
 # Live logs
 journalctl -u rootly2zabbix -f
 ```
----
-
-## Troubleshooting
-
-### Resolve doesn't close the Zabbix problem
-
-**Most common cause:** the trigger does not have "Allow manual close" enabled.
-
-Fix in Zabbix UI: **Configuration > Triggers > [edit trigger] > check "Allow manual close" > Update**
-
-### How to inspect async errors
-
-```bash
-# systemd
-journalctl -u rootly2zabbix -f
-
-# gunicorn stdout — look for processing_error lines
-grep '"event":"processing_error"' /var/log/rootly2zabbix.log
-```
-
-A failed close looks like:
-
-```
-{"event": "processing_error", "error": "Cannot close problem: trigger does not allow manual closing", ...}
-```
-
-A successful close looks like:
-
-```
-{"event": "zabbix_close", ...}
-```
-
 ---
 
 ## Testing
