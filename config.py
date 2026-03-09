@@ -23,6 +23,7 @@ class Config:
     rootly_api_token: str | None
     rootly_resolve_closes_zabbix: bool
     rootly_severity_updates_zabbix: bool
+    rootly_suppress_duration_days: int
     severity_map: dict[str, int]
     port: int
     debug: bool
@@ -68,6 +69,7 @@ def load_config() -> Config:
         rootly_api_token=os.environ.get("ROOTLY_API_TOKEN"),
         rootly_resolve_closes_zabbix=os.environ.get("ROOTLY_RESOLVE_CLOSES_ZABBIX", "true").lower() == "true",
         rootly_severity_updates_zabbix=os.environ.get("ROOTLY_SEVERITY_UPDATES_ZABBIX", "true").lower() == "true",
+        rootly_suppress_duration_days=int(os.environ.get("ROOTLY_SUPPRESS_DURATION_DAYS", "7")),
         severity_map=severity_map,
         port=int(os.environ.get("PORT", "5000")),
         debug=os.environ.get("DEBUG", "false").lower() == "true",

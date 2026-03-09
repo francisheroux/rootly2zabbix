@@ -12,6 +12,7 @@ ACTION_ACKNOWLEDGE = 2
 ACTION_MESSAGE = 4
 ACTION_SEVERITY = 8
 ACTION_UNACKNOWLEDGE = 16
+ACTION_SUPPRESS = 32
 
 
 class ZabbixAPIError(Exception):
@@ -44,6 +45,19 @@ class ZabbixClient:
             }
         )
 
+    def get_trigger(self, trigger_id: str) -> dict:
+        """Fetch trigger details including manual_close setting.
+
+        Returns the trigger dict, or raises ZabbixAPIError if not found.
+        """
+        result = self._call("trigger.get", {
+            "triggerids": [trigger_id],
+            "output": ["triggerid", "manual_close"],
+        })
+        if not result:
+            raise ZabbixAPIError("Trigger not found")
+        return result[0]
+
     def get_event(self, event_id: str) -> dict:
         """Fetch event details including objectid (trigger ID).
 
@@ -72,6 +86,7 @@ class ZabbixClient:
         message: str = "",
         action: int = ACTION_MESSAGE,
         severity: int | None = None,
+        suppress_until: int | None = None,
     ) -> dict:
         """Call event.acknowledge on the Zabbix API.
 
@@ -80,6 +95,7 @@ class ZabbixClient:
             message: Message/comment to attach (required when action includes MESSAGE).
             action: Bitmask of actions (ACTION_* constants, OR'd together).
             severity: New severity level (0-5); only used when action includes ACTION_SEVERITY.
+            suppress_until: Unix timestamp until which to suppress; only used when action includes ACTION_SUPPRESS.
         """
         params: dict = {
             "eventids": [event_id],
@@ -89,6 +105,8 @@ class ZabbixClient:
             params["message"] = message
         if severity is not None and (action & ACTION_SEVERITY):
             params["severity"] = severity
+        if suppress_until is not None and (action & ACTION_SUPPRESS):
+            params["suppress_until"] = suppress_until
 
         return self._call("event.acknowledge", params)
 

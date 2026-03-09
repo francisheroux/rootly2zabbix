@@ -2,6 +2,7 @@ import hmac
 import json
 import logging
 import threading
+import time
 
 from flask import Flask, jsonify, request
 
@@ -12,6 +13,7 @@ from zabbix import (
     ACTION_CLOSE,
     ACTION_MESSAGE,
     ACTION_SEVERITY,
+    ACTION_SUPPRESS,
     ACTION_UNACKNOWLEDGE,
     ZabbixAPIError,
     ZabbixClient,
@@ -114,30 +116,7 @@ def resolve_webhook():
 
     def _process():
         try:
-            try:
-                event_details = zabbix.get_event(zabbix_event_id)
-                trigger_id = event_details.get("objectid")
-                if trigger_id:
-                    zabbix.enable_trigger_manual_close(trigger_id)
-                    logger.info(json.dumps({"event": "trigger_manual_close_enabled", "trigger_id": trigger_id}))
-            except ZabbixAPIError as e:
-                logger.warning(json.dumps({
-                    "event": "trigger_manual_close_skipped",
-                    "hint": "API user may lack Admin role, or trigger is discovered (set manual_close on the template instead)",
-                    "error": str(e),
-                }))
-
-            try:
-                zabbix.acknowledge(zabbix_event_id, message, ACTION_CLOSE | ACTION_MESSAGE)
-                logger.info(json.dumps({"event": "zabbix_close", "zabbix_event_id": zabbix_event_id}))
-            except ZabbixAPIError as e:
-                logger.warning(json.dumps({
-                    "event": "zabbix_close_failed_falling_back_to_ack",
-                    "hint": 'Enable "Allow Manual Close" on the template trigger in Zabbix',
-                    "error": str(e),
-                }))
-                fallback_msg = message + ' — unable to close in Zabbix. Enable "Allow Manual Close" on this trigger.'
-                zabbix.acknowledge(zabbix_event_id, fallback_msg, ACTION_ACKNOWLEDGE | ACTION_MESSAGE)
+            _resolve_zabbix_event(zabbix_event_id, message)
         except Exception as e:  # pylint: disable=broad-except
             logger.error(json.dumps({"event": "resolve_error", "zabbix_event_id": zabbix_event_id, "error": str(e)}))
 
@@ -214,42 +193,59 @@ def _route_event(event) -> None:
 # Individual handlers
 # ---------------------------------------------------------------------------
 
+def _resolve_zabbix_event(zabbix_event_id: str, message: str) -> None:
+    """Resolve a Zabbix event: suppress if the trigger has manual_close=1, otherwise close."""
+    trigger_id: str | None = None
+    manual_close: str = "0"
+
+    try:
+        event_details = zabbix.get_event(zabbix_event_id)
+        trigger_id = event_details.get("objectid")
+        if trigger_id:
+            trigger = zabbix.get_trigger(trigger_id)
+            manual_close = trigger.get("manual_close", "0")
+    except ZabbixAPIError as e:
+        logger.warning(json.dumps({
+            "event": "trigger_lookup_failed",
+            "hint": "Falling back to close action",
+            "error": str(e),
+        }))
+
+    if manual_close == "1":
+        suppress_until = int(time.time()) + config.rootly_suppress_duration_days * 86400
+        zabbix.acknowledge(
+            zabbix_event_id,
+            message=message,
+            action=ACTION_SUPPRESS | ACTION_MESSAGE,
+            suppress_until=suppress_until,
+        )
+        logger.info(json.dumps({
+            "event": "zabbix_suppress",
+            "zabbix_event_id": zabbix_event_id,
+            "trigger_id": trigger_id,
+            "suppress_until": suppress_until,
+            "suppress_duration_days": config.rootly_suppress_duration_days,
+        }))
+    else:
+        try:
+            zabbix.acknowledge(zabbix_event_id, message=message, action=ACTION_CLOSE | ACTION_MESSAGE)
+            logger.info(json.dumps({"event": "zabbix_close", "zabbix_event_id": zabbix_event_id}))
+        except ZabbixAPIError as e:
+            logger.warning(json.dumps({
+                "event": "zabbix_close_failed_falling_back_to_ack",
+                "hint": 'Enable "Allow Manual Close" on the template trigger in Zabbix',
+                "error": str(e),
+            }))
+            fallback_msg = message + ' — unable to close in Zabbix. Enable "Allow Manual Close" on this trigger.'
+            zabbix.acknowledge(zabbix_event_id, message=fallback_msg, action=ACTION_ACKNOWLEDGE | ACTION_MESSAGE)
+
+
 def _handle_resolved(event) -> None:
     msg = "Resolved in Rootly"
     if event.incident_id:
         msg += f" (incident #{event.incident_id})"
-    logger.info(json.dumps({"event": "zabbix_close", "zabbix_event_id": event.zabbix_event_id}))
 
-    # Step 1: Get trigger ID from event
-    # Step 2: Enable manual close on the trigger (requires Admin role)
-    # Failure here is non-fatal — we log a warning and attempt the close anyway.
-    try:
-        event_details = zabbix.get_event(event.zabbix_event_id)
-        trigger_id = event_details.get("objectid")
-        if trigger_id:
-            zabbix.enable_trigger_manual_close(trigger_id)
-            logger.info(json.dumps({
-                "event": "trigger_manual_close_enabled",
-                "trigger_id": trigger_id,
-            }))
-    except ZabbixAPIError as e:
-        logger.warning(json.dumps({
-            "event": "trigger_manual_close_skipped",
-            "hint": "API user may lack Admin role, or trigger is discovered (set manual_close on the template instead)",
-            "error": str(e),
-        }))
-
-    # Step 3: close the event; fall back to comment-only if close is not allowed
-    try:
-        zabbix.acknowledge(event.zabbix_event_id, message=msg, action=ACTION_CLOSE | ACTION_MESSAGE)
-    except ZabbixAPIError as e:
-        logger.warning(json.dumps({
-            "event": "zabbix_close_failed_falling_back_to_ack",
-            "hint": "Enable 'Allow Manual Close' on the template trigger in Zabbix",
-            "error": str(e),
-        }))
-        fallback_msg = msg + ' — unable to close in Zabbix. Enable "Allow Manual Close" on this trigger.'
-        zabbix.acknowledge(event.zabbix_event_id, message=fallback_msg, action=ACTION_ACKNOWLEDGE | ACTION_MESSAGE)
+    _resolve_zabbix_event(event.zabbix_event_id, msg)
 
 
 def _handle_acknowledged(event) -> None:
