@@ -45,41 +45,6 @@ class ZabbixClient:
             }
         )
 
-    def get_trigger(self, trigger_id: str) -> dict:
-        """Fetch trigger details including manual_close setting.
-
-        Returns the trigger dict, or raises ZabbixAPIError if not found.
-        """
-        result = self._call("trigger.get", {
-            "triggerids": [trigger_id],
-            "output": ["triggerid", "manual_close"],
-        })
-        if not result:
-            raise ZabbixAPIError("Trigger not found")
-        return result[0]
-
-    def get_event(self, event_id: str) -> dict:
-        """Fetch event details including objectid (trigger ID).
-
-        Returns the first matching event dict, or {} if not found.
-        """
-        events = self._call("event.get", {
-            "eventids": [event_id],
-            "output": ["eventid", "objectid"],
-        })
-        return events[0] if events else {}
-
-    def enable_trigger_manual_close(self, trigger_id: str) -> dict:
-        """Enable Allow Manual Close on a trigger.
-
-        Requires the API user to have Admin or Super admin role in Zabbix.
-        Raises ZabbixAPIError if the user lacks sufficient permissions.
-        """
-        return self._call("trigger.update", {
-            "triggerid": trigger_id,
-            "manual_close": 1,
-        })
-
     def acknowledge(
         self,
         event_id: str,

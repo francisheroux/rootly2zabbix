@@ -194,24 +194,11 @@ def _route_event(event) -> None:
 # ---------------------------------------------------------------------------
 
 def _resolve_zabbix_event(zabbix_event_id: str, message: str) -> None:
-    """Resolve a Zabbix event: suppress if the trigger has manual_close=1, otherwise close."""
-    trigger_id: str | None = None
-    manual_close: str = "0"
-
+    """Resolve a Zabbix event: close if possible, suppress if close fails."""
     try:
-        event_details = zabbix.get_event(zabbix_event_id)
-        trigger_id = event_details.get("objectid")
-        if trigger_id:
-            trigger = zabbix.get_trigger(trigger_id)
-            manual_close = trigger.get("manual_close", "0")
+        zabbix.acknowledge(zabbix_event_id, message=message, action=ACTION_CLOSE | ACTION_MESSAGE)
+        logger.info(json.dumps({"event": "zabbix_close", "zabbix_event_id": zabbix_event_id}))
     except ZabbixAPIError as e:
-        logger.warning(json.dumps({
-            "event": "trigger_lookup_failed",
-            "hint": "Falling back to close action",
-            "error": str(e),
-        }))
-
-    if manual_close == "1":
         suppress_until = int(time.time()) + config.rootly_suppress_duration_days * 86400
         zabbix.acknowledge(
             zabbix_event_id,
@@ -222,22 +209,10 @@ def _resolve_zabbix_event(zabbix_event_id: str, message: str) -> None:
         logger.info(json.dumps({
             "event": "zabbix_suppress",
             "zabbix_event_id": zabbix_event_id,
-            "trigger_id": trigger_id,
             "suppress_until": suppress_until,
             "suppress_duration_days": config.rootly_suppress_duration_days,
+            "reason": str(e),
         }))
-    else:
-        try:
-            zabbix.acknowledge(zabbix_event_id, message=message, action=ACTION_CLOSE | ACTION_MESSAGE)
-            logger.info(json.dumps({"event": "zabbix_close", "zabbix_event_id": zabbix_event_id}))
-        except ZabbixAPIError as e:
-            logger.warning(json.dumps({
-                "event": "zabbix_close_failed_falling_back_to_ack",
-                "hint": 'Enable "Allow Manual Close" on the template trigger in Zabbix',
-                "error": str(e),
-            }))
-            fallback_msg = message + ' — unable to close in Zabbix. Enable "Allow Manual Close" on this trigger.'
-            zabbix.acknowledge(zabbix_event_id, message=fallback_msg, action=ACTION_ACKNOWLEDGE | ACTION_MESSAGE)
 
 
 def _handle_resolved(event) -> None:
