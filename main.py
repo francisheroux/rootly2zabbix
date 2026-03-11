@@ -199,9 +199,9 @@ def _resolve_zabbix_event(zabbix_event_id: str, message: str) -> None:
         zabbix.acknowledge(zabbix_event_id, message=message, action=ACTION_CLOSE | ACTION_MESSAGE)
         logger.info(json.dumps({"event": "zabbix_close", "zabbix_event_id": zabbix_event_id}))
     except ZabbixAPIError as e:
-        suppress_until = int(time.time()) + config.rootly_suppress_duration_days * 86400
+        suppress_until = int(time.time()) + config.zabbix_suppress_duration_days * 86400
         suppress_msg = (
-            f"{message} — could not close in Zabbix, suppressed for {config.rootly_suppress_duration_days} days"
+            f"{message} — could not close in Zabbix, suppressed for {config.zabbix_suppress_duration_days} days"
         )
         zabbix.acknowledge(
             zabbix_event_id,
@@ -213,7 +213,7 @@ def _resolve_zabbix_event(zabbix_event_id: str, message: str) -> None:
             "event": "zabbix_suppress",
             "zabbix_event_id": zabbix_event_id,
             "suppress_until": suppress_until,
-            "suppress_duration_days": config.rootly_suppress_duration_days,
+            "suppress_duration_days": config.zabbix_suppress_duration_days,
             "reason": str(e),
         }))
 
