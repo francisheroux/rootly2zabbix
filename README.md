@@ -32,7 +32,7 @@ Receives Rootly webhook events and mirrors alert state changes (acknowledge and 
 
 ## Requirements
 
-  - Rootly Media Type in Zabbix (I have created one here: https://github.com/zabbix/zabbix/pull/166 which is currently a PR. If you have your own, make sure it includes key `eventid` with value `{EVENT.ID}` so Rootly can match the Zabbix Event ID of the alert)
+  - Rootly Media Type in Zabbix (I have created one here: [https://github.com/zabbix/zabbix/pull/166](https://github.com/francisheroux/zabbix/tree/master) which is currently a PR. If you have your own, make sure it includes key `eventid` with value `{EVENT.ID}` so Rootly can match the Zabbix Event ID of the alert)
     
   - Zabbix Alert Source in Rootly (the README.md in the Rootly Media Type has instructions for this if you don't have one setup already)
 
