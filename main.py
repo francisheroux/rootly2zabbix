@@ -199,23 +199,32 @@ def _resolve_zabbix_event(zabbix_event_id: str, message: str) -> None:
         zabbix.acknowledge(zabbix_event_id, message=message, action=ACTION_CLOSE | ACTION_MESSAGE)
         logger.info(json.dumps({"event": "zabbix_close", "zabbix_event_id": zabbix_event_id}))
     except ZabbixAPIError as e:
-        suppress_until = int(time.time()) + config.zabbix_suppress_duration_days * 86400
-        suppress_msg = (
-            f"{message} — could not close in Zabbix, suppressed for {config.zabbix_suppress_duration_days} days"
-        )
-        zabbix.acknowledge(
-            zabbix_event_id,
-            message=suppress_msg,
-            action=ACTION_SUPPRESS | ACTION_MESSAGE,
-            suppress_until=suppress_until,
-        )
-        logger.info(json.dumps({
-            "event": "zabbix_suppress",
-            "zabbix_event_id": zabbix_event_id,
-            "suppress_until": suppress_until,
-            "suppress_duration_days": config.zabbix_suppress_duration_days,
-            "reason": str(e),
-        }))
+        if config.zabbix_suppress_on_close_failure:
+            suppress_until = int(time.time()) + config.zabbix_suppress_duration_days * 86400
+            suppress_msg = (
+                f"{message} — could not close in Zabbix, suppressed for {config.zabbix_suppress_duration_days} days"
+            )
+            zabbix.acknowledge(
+                zabbix_event_id,
+                message=suppress_msg,
+                action=ACTION_SUPPRESS | ACTION_MESSAGE,
+                suppress_until=suppress_until,
+            )
+            logger.info(json.dumps({
+                "event": "zabbix_suppress",
+                "zabbix_event_id": zabbix_event_id,
+                "suppress_until": suppress_until,
+                "suppress_duration_days": config.zabbix_suppress_duration_days,
+                "reason": str(e),
+            }))
+        else:
+            ack_msg = f"{message} — could not close in Zabbix. Suppression is disabled, leaving as acknowledged."
+            zabbix.acknowledge(zabbix_event_id, message=ack_msg, action=ACTION_MESSAGE)
+            logger.info(json.dumps({
+                "event": "zabbix_ack_only",
+                "zabbix_event_id": zabbix_event_id,
+                "reason": str(e),
+            }))
 
 
 def _handle_resolved(event) -> None:

@@ -24,6 +24,7 @@ class Config:
     rootly_resolve_closes_zabbix: bool
     rootly_severity_updates_zabbix: bool
     zabbix_suppress_duration_days: int
+    zabbix_suppress_on_close_failure: bool
     severity_map: dict[str, int]
     port: int
     debug: bool
@@ -70,6 +71,7 @@ def load_config() -> Config:
         rootly_resolve_closes_zabbix=os.environ.get("ROOTLY_RESOLVE_CLOSES_ZABBIX", "true").lower() == "true",
         rootly_severity_updates_zabbix=os.environ.get("ROOTLY_SEVERITY_UPDATES_ZABBIX", "true").lower() == "true",
         zabbix_suppress_duration_days=int(os.environ.get("ZABBIX_SUPPRESS_DURATION_DAYS", "3")),
+        zabbix_suppress_on_close_failure=os.environ.get("ZABBIX_SUPPRESS_ON_CLOSE_FAILURE", "true").lower() == "true",
         severity_map=severity_map,
         port=int(os.environ.get("PORT", "5000")),
         debug=os.environ.get("DEBUG", "false").lower() == "true",
