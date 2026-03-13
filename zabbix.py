@@ -75,6 +75,19 @@ class ZabbixClient:
 
         return self._call("event.acknowledge", params)
 
+    def get_event_value(self, event_id: str) -> str | None:
+        """Return the event's value field: '0' = OK/recovered, '1' = PROBLEM.
+
+        Returns None if the event is not found or an error occurs.
+        """
+        result = self._call("event.get", {
+            "eventids": [event_id],
+            "output": ["eventid", "value"],
+        })
+        if result and isinstance(result, list):
+            return result[0].get("value")
+        return None
+
     def _call(self, method: str, params: dict) -> dict:
         """Make a JSON-RPC call with per-URL retry and failover to next URL."""
         payload = {

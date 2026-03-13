@@ -17,6 +17,7 @@ from zabbix import (
     ACTION_UNACKNOWLEDGE,
     ZabbixAPIError,
     ZabbixClient,
+    ZabbixConnectionError,
 )
 
 # ---------------------------------------------------------------------------
@@ -195,6 +196,23 @@ def _route_event(event) -> None:
 
 def _resolve_zabbix_event(zabbix_event_id: str, message: str) -> None:
     """Resolve a Zabbix event: close if possible, suppress if close fails."""
+    try:
+        event_value = zabbix.get_event_value(zabbix_event_id)
+        if event_value == "0":
+            logger.info(json.dumps({
+                "event": "zabbix_already_recovered",
+                "zabbix_event_id": zabbix_event_id,
+                "reason": "Zabbix event already recovered; skipping resolution (likely auto-resolved by Zabbix)",
+            }))
+            return
+    except (ZabbixAPIError, ZabbixConnectionError) as e:
+        logger.warning(json.dumps({
+            "event": "zabbix_event_check_failed",
+            "zabbix_event_id": zabbix_event_id,
+            "error": str(e),
+            "reason": "Could not check event state; proceeding with resolution",
+        }))
+
     try:
         zabbix.acknowledge(zabbix_event_id, message=message, action=ACTION_CLOSE | ACTION_MESSAGE)
         logger.info(json.dumps({"event": "zabbix_close", "zabbix_event_id": zabbix_event_id}))
