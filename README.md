@@ -108,7 +108,7 @@ There are two different ways to set this up depending on how you handle alerts. 
 ```json
   {
     "zabbix_event_id": "{{ alert.data.alert_id }}",
-    "message": "Resolved in Rootly ({{ alert.short_id }}) by {{ alert.responders | first | get:"name" }}"
+    "message": "Resolved in Rootly ({{ alert.short_id }}) by {{ alert.resolved_by.name }}"
   }
 ```
 
@@ -189,7 +189,7 @@ There are two different ways to set this up depending on how you handle alerts. 
   {%- endfor -%}
   {
     "zabbix_event_id": "{{ zabbix_id }}",
-    "message": "Resolved in Rootly (#{{ alert.short_id }}) by {{ alert.responders | first | get:"name" }}"
+    "message": "Resolved in Rootly (#{{ alert.short_id }}) by {{ alert.resolved_by.name }}"
   }
 ```
 ---
