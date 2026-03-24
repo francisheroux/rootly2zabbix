@@ -11,7 +11,7 @@ Receives Rootly webhook events and mirrors alert state changes (acknowledge and 
 ### The Core Flow
 
   1. Rootly sends a webhook to this service whenever an alert is acknowledged or resolved.
-  2. The service verifies the request is genuinely from Rootly using HMAC-SHA256 signature verification (replay attack protection included — rejects requests older than 5 minutes).
+  2. The service verifies the request is genuinely from Rootly using HMAC-SHA256 signature verification (replay attack protection including rejects requests older than 5 minutes).
   3. The Zabbix event ID is extracted from the Rootly alert payload.
   4. The event is routed to the appropriate Zabbix action based on event type.
   5. Zabbix is updated via its JSON-RPC API (event.acknowledge).
