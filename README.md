@@ -297,4 +297,6 @@ journalctl -u rootly2zabbix -f
 journalctl -u rootly2zabbix -f
 ```
 
+## Contributions
 
+Many thanks to the very helpful and awesome Rootly Support Team! They were able to push out several feature requests that I needed to make this project possible ❤️
