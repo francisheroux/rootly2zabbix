@@ -11,7 +11,7 @@ Receives Rootly webhook events and mirrors alert state changes (acknowledge and 
 ### The Core Flow
 
   1. Rootly sends a webhook to this service whenever an alert is acknowledged or resolved.
-  2. The service verifies the request is genuinely from Rootly using HMAC-SHA256 signature verification (replay attack protection included — rejects requests older than 5 minutes).
+  2. The service verifies the request is genuinely from Rootly using HMAC-SHA256 signature verification (replay attack protection including rejects requests older than 5 minutes).
   3. The Zabbix event ID is extracted from the Rootly alert payload.
   4. The event is routed to the appropriate Zabbix action based on event type.
   5. Zabbix is updated via its JSON-RPC API (event.acknowledge).
@@ -32,7 +32,7 @@ Receives Rootly webhook events and mirrors alert state changes (acknowledge and 
 
 ## Requirements
 
-  - Rootly Media Type in Zabbix (I have created one here: [https://github.com/zabbix/zabbix/pull/166](https://github.com/francisheroux/zabbix/tree/master) which is currently a PR. If you have your own, make sure it includes key `eventid` with value `{EVENT.ID}` so Rootly can match the Zabbix Event ID of the alert)
+  - Rootly Media Type in Zabbix (I have created one here: [https://github.com/zabbix/zabbix/pull/166](https://github.com/zabbix/zabbix/pull/166/changes) which is currently a PR. If you have your own, make sure it includes key `eventid` with value `{EVENT.ID}` so Rootly can match the Zabbix Event ID of the alert)
     
   - Zabbix Alert Source in Rootly (the README.md in the Rootly Media Type has instructions for this if you don't have one setup already)
 
@@ -84,7 +84,7 @@ There are two different ways to set this up depending on how you handle alerts. 
 ```json
   {
     "zabbix_event_id": "{{ alert.data.alert_id }}",
-    "message": "Acknowledged in Rootly ({{ alert.short_id }}) by {{ alert.responders | first | get:"name" }}"
+    "message": "Acknowledged in Rootly ({{ alert.short_id }}) by {{ alert.acknowledged_by.name }}"
   }
 ```
 
@@ -108,7 +108,7 @@ There are two different ways to set this up depending on how you handle alerts. 
 ```json
   {
     "zabbix_event_id": "{{ alert.data.alert_id }}",
-    "message": "Resolved in Rootly ({{ alert.short_id }}) by {{ alert.responders | first | get:"name" }}"
+    "message": "Resolved in Rootly ({{ alert.short_id }}) by {{ alert.resolved_by.name }}: '{{ alert.timeline | where: "action", "resolved" | map: "details" | compact | first }}'""
   }
 ```
 
@@ -158,7 +158,7 @@ There are two different ways to set this up depending on how you handle alerts. 
   {%- endfor -%}
   {
     "zabbix_event_id": "{{ zabbix_id }}",
-    "message": "Acknowledged in Rootly (#{{ alert.short_id }}) by {{ alert.responders | first | get:"name" }}"
+    "message": "Acknowledged in Rootly (#{{ alert.short_id }}) by {{ alert.acknowledged_by.name }}"
   }
 ```
 
@@ -189,7 +189,7 @@ There are two different ways to set this up depending on how you handle alerts. 
   {%- endfor -%}
   {
     "zabbix_event_id": "{{ zabbix_id }}",
-    "message": "Resolved in Rootly (#{{ alert.short_id }}) by {{ alert.responders | first | get:"name" }}"
+    "message": "Resolved in Rootly (#{{ alert.short_id }}) by {{ alert.resolved_by.name }}: '{{ alert.timeline | where: "action", "resolved" | map: "details" | compact | first }}'""
   }
 ```
 ---
@@ -297,4 +297,6 @@ journalctl -u rootly2zabbix -f
 journalctl -u rootly2zabbix -f
 ```
 
+## Contributions
 
+Many thanks to the very helpful and awesome Rootly Support Team! They were able to push out several feature requests that I needed to make this project possible ❤️
