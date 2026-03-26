@@ -197,12 +197,11 @@ def _route_event(event) -> None:
 def _resolve_zabbix_event(zabbix_event_id: str, message: str) -> None:
     """Resolve a Zabbix event: close if possible, suppress if close fails."""
     try:
-        event_value = zabbix.get_event_value(zabbix_event_id)
-        if event_value == "0":
+        if zabbix.is_event_recovered(zabbix_event_id):
             logger.info(json.dumps({
                 "event": "zabbix_already_recovered",
                 "zabbix_event_id": zabbix_event_id,
-                "reason": "Zabbix event already recovered; skipping resolution (likely auto-resolved by Zabbix)",
+                "reason": "Zabbix event already recovered (r_eventid set); skipping resolution",
             }))
             return
     except (ZabbixAPIError, ZabbixConnectionError) as e:

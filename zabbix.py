@@ -75,18 +75,25 @@ class ZabbixClient:
 
         return self._call("event.acknowledge", params)
 
-    def get_event_value(self, event_id: str) -> str | None:
-        """Return the event's value field: '0' = OK/recovered, '1' = PROBLEM.
+    def is_event_recovered(self, event_id: str) -> bool:
+        """Return True if the Zabbix PROBLEM event has been auto-recovered by Zabbix.
 
-        Returns None if the event is not found or an error occurs.
+        Checks r_eventid rather than value — PROBLEM events always have value=1;
+        r_eventid is set to the recovery event ID when the trigger resolves.
         """
         result = self._call("event.get", {
             "eventids": [event_id],
-            "output": ["eventid", "value"],
+            "output": ["eventid", "value", "r_eventid"],
         })
+        logger.info(json.dumps({
+            "event": "zabbix_event_state_check",
+            "zabbix_event_id": event_id,
+            "result": result,
+        }))
         if result and isinstance(result, list):
-            return result[0].get("value")
-        return None
+            r_eventid = result[0].get("r_eventid", "0")
+            return r_eventid not in (None, "0", 0)
+        return False
 
     def _call(self, method: str, params: dict) -> dict:
         """Make a JSON-RPC call with per-URL retry and failover to next URL."""
